@@ -16,6 +16,7 @@ from oci.database.models import (
     CreatePluggableDatabaseFromRemoteCloneDetails,
 )
 from oci.util import to_dict
+from oracle_mcp_common import build_auth_context
 from oracle.oci_database_mcp_server.models import (
     ApplicationVip,
     ApplicationVipSummary,
@@ -281,6 +282,8 @@ from . import __project__, __version__
 
 logger = Logger(__name__, level="INFO")
 mcp = FastMCP(name=__project__)
+_user_agent_name = __project__.split("oracle.", 1)[1].split("-server", 1)[0]
+_ADDITIONAL_UA = f"{_user_agent_name}/{__version__}"
 
 
 def _get_oci_client_kwargs(signer=None):
@@ -298,23 +301,20 @@ def _get_oci_client_kwargs(signer=None):
     return kwargs
 
 
+def _get_config_and_signer(region: str = None) -> tuple[dict[str, Any], Any]:
+    """Resolve OCI SDK authentication and configuration for a client."""
+    auth_context = build_auth_context()
+    config = {**auth_context.config, "additional_user_agent": _ADDITIONAL_UA}
+    if region is not None:
+        config["region"] = region
+    return config, auth_context.signer
+
+
 def get_database_client(region: str = None):
-    config = oci.config.from_file(
-        file_location=os.getenv("OCI_CONFIG_FILE", oci.config.DEFAULT_LOCATION),
-        profile_name=os.getenv("OCI_CONFIG_PROFILE", oci.config.DEFAULT_PROFILE),
+    config, signer = _get_config_and_signer(region)
+    return oci.database.DatabaseClient(
+        config, **_get_oci_client_kwargs(signer)
     )
-    user_agent_name = __project__.split("oracle.", 1)[1].split("-server", 1)[0]
-    config["additional_user_agent"] = f"{user_agent_name}/{__version__}"
-    private_key = oci.signer.load_private_key_from_file(config["key_file"])
-    token_file = config["security_token_file"]
-    with open(token_file, "r") as f:
-        token = f.read()
-    signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
-    if region is None:
-        return oci.database.DatabaseClient(config, **_get_oci_client_kwargs(signer))
-    regional_config = config.copy()
-    regional_config["region"] = region
-    return oci.database.DatabaseClient(regional_config, **_get_oci_client_kwargs(signer))
 
 
 def call_create_pdb(client, details, opc_retry_token=None, opc_request_id=None):
@@ -375,19 +375,11 @@ def get_public_ip_for_database(
         if not db_nodes:
             return None
 
-        # Initialize Virtual Network Client
-        config = oci.config.from_file(
-            profile_name=os.getenv("OCI_CONFIG_PROFILE", oci.config.DEFAULT_PROFILE)
+        # Initialize Virtual Network Client with the same shared auth resolver.
+        config, signer = _get_config_and_signer(region)
+        virtual_network_client = oci.core.VirtualNetworkClient(
+            config, **_get_oci_client_kwargs(signer)
         )
-        private_key = oci.signer.load_private_key_from_file(config["key_file"])
-        token_file = config["security_token_file"]
-        with open(token_file, "r") as f:
-            token = f.read()
-        signer = oci.auth.signers.SecurityTokenSigner(token, private_key)
-
-        virtual_network_client = oci.core.VirtualNetworkClient(config, signer=signer)
-        if region:
-            virtual_network_client.base_client.set_region(region)
 
         # Iterate through nodes to find one with a valid VNIC and Public IP
         found_public_ip = None

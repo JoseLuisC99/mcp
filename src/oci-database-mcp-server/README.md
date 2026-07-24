@@ -12,9 +12,20 @@ uv run oracle.oci-database-mcp-server
 
 ## Environment Variables
 
-The server supports the following environment variables:
+The server uses `oracle-mcp-common` to resolve OCI authentication. It supports
+the following environment variables:
 
+- `OCI_MCP_AUTH_TYPE`: authentication mode. The default, `auto`, selects
+  session-token authentication when the selected profile directly declares a
+  `security_token_file`; otherwise it uses API-key authentication.
+- `OCI_CONFIG_FILE`: OCI configuration file path (default: `~/.oci/config`).
 - `OCI_CONFIG_PROFILE`: OCI configuration profile name (default: "DEFAULT")
+
+Set `OCI_MCP_AUTH_TYPE` to use a non-profile authentication mode:
+`identity_domain_upst`, `instance_principal`, `resource_principal`,
+`instance_principal_delegation`, `resource_principal_delegation`, or
+`oke_workload_identity`. Those modes use the standard `oracle-mcp-common`
+configuration and OCI SDK prerequisites.
 
 ## Tools
 
@@ -186,4 +197,3 @@ Copyright (c) 2025 Oracle and/or its affiliates.
 
 Released under the Universal Permissive License v1.0 as shown at  
 <https://oss.oracle.com/licenses/upl/>.
-

@@ -9,44 +9,81 @@ from fastmcp import Client
 import oracle.oci_database_mcp_server.models as models
 import oracle.oci_database_mcp_server.server as server
 from oracle.oci_database_mcp_server.server import mcp
+from oracle_mcp_common import AuthContext, AuthType
 
 
 class TestGetDatabaseClient:
-    @patch("oracle.oci_database_mcp_server.server.oci.database.DatabaseClient")
-    @patch("oracle.oci_database_mcp_server.server.oci.auth.signers.SecurityTokenSigner")
-    @patch("oracle.oci_database_mcp_server.server.oci.signer.load_private_key_from_file")
-    @patch(
-        "oracle.oci_database_mcp_server.server.open",
-        new_callable=mock_open,
-        read_data="SECURITY_TOKEN",
+    @pytest.mark.parametrize(
+        ("auth_type", "context_config"),
+        [
+            (AuthType.API_KEY, {"region": "us-ashburn-1"}),
+            (AuthType.SECURITY_TOKEN, {"region": "us-ashburn-1"}),
+            (AuthType.IDENTITY_DOMAIN_UPST, {"region": "us-ashburn-1"}),
+            (AuthType.INSTANCE_PRINCIPAL, {}),
+            (AuthType.RESOURCE_PRINCIPAL, {}),
+            (AuthType.INSTANCE_PRINCIPAL_DELEGATION, {}),
+            (AuthType.RESOURCE_PRINCIPAL_DELEGATION, {}),
+            (AuthType.OKE_WORKLOAD_IDENTITY, {}),
+        ],
     )
-    @patch("oracle.oci_database_mcp_server.server.oci.config.from_file")
-    @patch("oracle.oci_database_mcp_server.server.os.getenv")
+    @patch("oracle.oci_database_mcp_server.server.oci.database.DatabaseClient")
+    @patch("oracle.oci_database_mcp_server.server.build_auth_context")
     def test_get_database_client_passes_circuit_breaker_and_region(
         self,
-        mock_getenv,
-        mock_from_file,
-        mock_open_file,
-        mock_load_private_key,
-        mock_security_token_signer,
+        mock_build_auth_context,
         mock_client,
+        auth_type,
+        context_config,
     ):
-        mock_getenv.side_effect = lambda k, default=None: default
-        config = {"key_file": "/key.pem", "security_token_file": "/token", "region": "us-ashburn-1"}
-        mock_from_file.return_value = config
-        private_key_obj = object()
-        mock_load_private_key.return_value = private_key_obj
+        signer = object()
+        original_config = dict(context_config)
+        mock_build_auth_context.return_value = AuthContext(
+            auth_type=auth_type,
+            config=original_config,
+            signer=signer,
+            tenancy_id=None,
+            region=original_config.get("region"),
+            profile_name=None,
+        )
 
         result = server.get_database_client(region="us-phoenix-1")
 
-        mock_open_file.assert_called_once_with("/token", "r")
-        mock_security_token_signer.assert_called_once_with("SECURITY_TOKEN", private_key_obj)
+        mock_build_auth_context.assert_called_once_with()
         args, kwargs = mock_client.call_args
+        assert args[0]["additional_user_agent"] == "oci-database-mcp/1.1.0"
         assert args[0]["region"] == "us-phoenix-1"
-        assert kwargs["signer"] is mock_security_token_signer.return_value
+        assert original_config == context_config
+        assert kwargs["signer"] is signer
         assert isinstance(kwargs["circuit_breaker_strategy"], oci.circuit_breaker.CircuitBreakerStrategy)
         assert callable(kwargs["circuit_breaker_callback"])
         assert result is mock_client.return_value
+
+    @patch("oracle.oci_database_mcp_server.server.oci.database.DatabaseClient")
+    @patch("oracle.oci_database_mcp_server.server.build_auth_context")
+    def test_get_database_client_uses_context_region_without_an_override(
+        self, mock_build_auth_context, mock_client
+    ):
+        signer = object()
+        context_config = {"region": "us-ashburn-1"}
+        mock_build_auth_context.return_value = AuthContext(
+            auth_type=AuthType.API_KEY,
+            config=context_config,
+            signer=signer,
+            tenancy_id=None,
+            region="us-ashburn-1",
+            profile_name="DEFAULT",
+        )
+
+        server.get_database_client()
+
+        mock_build_auth_context.assert_called_once_with()
+        args, kwargs = mock_client.call_args
+        assert args[0] == {
+            "additional_user_agent": "oci-database-mcp/1.1.0",
+            "region": "us-ashburn-1",
+        }
+        assert context_config == {"region": "us-ashburn-1"}
+        assert kwargs["signer"] is signer
 
 
 def test_oci_base_model_from_oci(monkeypatch):
@@ -3349,12 +3386,10 @@ async def test_get_vm_cluster_update_history_entry(mock_get_client):
 
 @pytest.mark.asyncio
 @patch("oracle.oci_database_mcp_server.server.get_database_client")
+@patch("oracle.oci_database_mcp_server.server._get_config_and_signer")
 @patch("oci.core.VirtualNetworkClient")
-@patch("oci.config.from_file")
-@patch("oci.signer.load_private_key_from_file")
-@patch("builtins.open", new_callable=mock_open, read_data="dummy_token")
 async def test_get_public_ip_for_database(
-    mock_file, mock_load_key, mock_config, mock_vcn_client_cls, mock_get_db_client
+    mock_vcn_client_cls, mock_get_config_and_signer, mock_get_db_client
 ):
     mock_db_client = MagicMock()
     mock_get_db_client.return_value = mock_db_client
@@ -3382,10 +3417,9 @@ async def test_get_public_ip_for_database(
     mock_vnic_response.data = mock_vnic
     mock_vcn_client.get_vnic.return_value = mock_vnic_response
 
-    mock_config.return_value = {
-        "key_file": "/dummy/path/key.pem",
-        "security_token_file": "/dummy/path/token",
-    }
+    config = {"additional_user_agent": "oci-database-mcp/1.1.0"}
+    signer = object()
+    mock_get_config_and_signer.return_value = (config, signer)
 
     async with Client(mcp) as client:
         response = await client.call_tool(
@@ -3397,6 +3431,14 @@ async def test_get_public_ip_for_database(
             database_id="ocid1.database.oc1..sampleId"
         )
         mock_db_client.list_db_nodes.assert_called_once()
+        mock_get_config_and_signer.assert_called_once_with(None)
+        vcn_args, vcn_kwargs = mock_vcn_client_cls.call_args
+        assert vcn_args[0] == config
+        assert vcn_kwargs["signer"] is signer
+        assert isinstance(
+            vcn_kwargs["circuit_breaker_strategy"],
+            oci.circuit_breaker.CircuitBreakerStrategy,
+        )
 
         mock_vcn_client.get_vnic.assert_called_with("ocid1.vnic.oc1..sample")
 
