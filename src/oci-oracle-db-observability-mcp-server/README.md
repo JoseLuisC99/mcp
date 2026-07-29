@@ -1,31 +1,25 @@
-# Oracle DB Observability MCP Servers
+# OCI Database Observability MCP Server
 
-## Overview
+This package provides one MCP server for OCI Operations Insights (OPSI) and OCI
+Database Management (DBM). It exposes two read-only compartment discovery
+tools plus four catalog discovery and invocation tools. The catalog contains
+only operations with exact OCI Python SDK bindings.
 
-This package provides MCP servers to interact with Oracle database observability services.
-It currently includes separate v1 servers for OCI Operations Insights (OPSI) and OCI
-Database Management (DBM).
+## Running
 
-## Running the OPSI server
-
-### STDIO transport mode
-
-Use the default OCI CLI profile:
+### STDIO
 
 ```sh
-uvx oracle.oci-opsi-mcp-server
+uvx oracle.oci-db-observability-mcp-server
 ```
 
-Use a named OCI CLI profile:
+Use a named OCI CLI profile when required:
 
 ```sh
-OCI_CONFIG_PROFILE=<profile_name> uvx oracle.oci-opsi-mcp-server
+OCI_CONFIG_PROFILE=<profile_name> uvx oracle.oci-db-observability-mcp-server
 ```
 
-Set `OCI_CONFIG_FILE=<config_file>` when the profile is not in the default OCI config file.
-STDIO supports OCI CLI API-key profiles and session-token profiles.
-
-### HTTP streaming transport mode
+### HTTP streaming
 
 ```sh
 ORACLE_MCP_HOST=<bind_host> \
@@ -36,92 +30,50 @@ IDCS_DOMAIN=<idcs_domain> \
 IDCS_CLIENT_ID=<client_id> \
 IDCS_CLIENT_SECRET=<client_secret> \
 IDCS_AUDIENCE=<audience> \
-uvx oracle.oci-opsi-mcp-server
+uvx oracle.oci-db-observability-mcp-server
 ```
 
-Register `${ORACLE_MCP_BASE_URL}/auth/callback` in the OCI IAM confidential application.
-If `IDCS_REQUIRED_SCOPES` is unset, the default is `openid profile email oci_mcp.opsi.invoke`.
+Register `${ORACLE_MCP_BASE_URL}/auth/callback` in the OCI IAM confidential
+application. If `IDCS_REQUIRED_SCOPES` is unset, the default scope is
+`oci_mcp.db_observability.invoke` together with the standard OpenID scopes.
 
-## Running the DBM server
+## Discovery workflow
 
-### STDIO transport mode
+1. Call `list_compartments` or `get_compartment` to resolve OCI scope.
+2. Call `list_skills` and select the smallest relevant skill set.
+3. Call `list_tools` for those skills, optionally with separate `keywords`.
+   Every keyword must match a tool name or description; use
+   `['database', 'insights']`, not `['database_insights']`.
+4. Call `describe_tool` for the chosen operation.
+5. Call `invoke_tool` with arguments matching the returned schema.
 
-Use the default OCI CLI profile:
+The complete skill and tool catalogs are packaged as JSON under
+`oracle/oci_oracle_db_observability/metadata`. The tool catalog contains
+OPSI and DBM SDK bindings; it does not expose the individual operations as MCP
+tools.
+
+## Development
+
+Run the unified server tests with:
 
 ```sh
-uvx oracle.oci-dbm-mcp-server
+make test project=oci-oracle-db-observability-mcp-server
 ```
 
-Use a named OCI CLI profile:
+Run repository lint with:
 
 ```sh
-OCI_CONFIG_PROFILE=<profile_name> uvx oracle.oci-dbm-mcp-server
+make lint
 ```
-
-Set `OCI_CONFIG_FILE=<config_file>` when the profile is not in the default OCI config file.
-STDIO supports OCI CLI API-key profiles and session-token profiles.
-
-### HTTP streaming transport mode
-
-```sh
-ORACLE_MCP_HOST=<bind_host> \
-ORACLE_MCP_PORT=<port> \
-ORACLE_MCP_BASE_URL=<public_base_url> \
-OCI_REGION=<region> \
-IDCS_DOMAIN=<idcs_domain> \
-IDCS_CLIENT_ID=<client_id> \
-IDCS_CLIENT_SECRET=<client_secret> \
-IDCS_AUDIENCE=<audience> \
-uvx oracle.oci-dbm-mcp-server
-```
-
-Register `${ORACLE_MCP_BASE_URL}/auth/callback` in the OCI IAM confidential application.
-If `IDCS_REQUIRED_SCOPES` is unset, the default is `openid profile email oci_mcp.dbm.invoke`.
-
-## Tools
-
-| Tool Group | Description |
-| --- | --- |
-| OPSI tools | 158 non-deprecated OCI Operations Insights SDK methods, excluding `delete_*` methods and excluded operation classes from `docs/tool-list.csv`. Tool names match SDK method names. |
-| DBM tools | 266 OCI Database Management SDK methods, excluding `delete_*`, `drop_*`, deprecated MySQL/HeatWave operations, and excluded operation classes from `docs/tool-list.csv`. Tool names match SDK method names. |
-| get_compartment | Get an OCI compartment with a given compartment OCID. |
-| list_compartments | List OCI compartments from a root compartment. |
-
-## Generating OPSI MCP files
-
-The OPSI tool, model, and manifest files can be generated from the Oracle OpenAPI spec.
-Use a local spec for deterministic offline generation:
-
-```sh
-uv run oci-oracle-db-observability-mcp-server-generate-opsi --spec-file <openapi-yaml>
-```
-
-To verify checked-in generated files without rewriting them:
-
-```sh
-uv run oci-oracle-db-observability-mcp-server-generate-opsi --spec-file <openapi-yaml> --check
-```
-
-If `--spec-file` is omitted, the generator resolves `operations-insights` from the Oracle
-API spec index URL and fetches the referenced spec.
-
-⚠️ **NOTE**: `stdio` uses the configured OCI CLI profile. HTTP uses IDCS/IAM token exchange
-for the authenticated OCI IAM user and ignores local OCI CLI profiles for request authentication.
-
-⚠️ **NOTE**: Non-delete mutating OPSI tools and non-delete, non-drop mutating DBM tools are
-marked with MCP tool annotations because they can change OCI or database state.
 
 ## Third-Party APIs
 
-Developers choosing to distribute a binary implementation of this project are responsible for obtaining and providing all required licenses and copyright notices for the third-party code used in order to ensure compliance with their respective open source licenses.
-
-## Disclaimer
-
-Users are responsible for their local environment and credential safety. Different language model selections may yield different results and performance.
+Developers choosing to distribute a binary implementation of this project are
+responsible for obtaining and providing all required licenses and copyright
+notices for the third-party code used.
 
 ## License
 
 Copyright (c) 2026 Oracle and/or its affiliates.
 
-Released under the Universal Permissive License v1.0 as shown at
-<https://oss.oracle.com/licenses/upl/>.
+Released under the Universal Permissive License v1.0.

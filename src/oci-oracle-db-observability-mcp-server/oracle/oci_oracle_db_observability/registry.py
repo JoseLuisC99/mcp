@@ -1,0 +1,146 @@
+"""Immutable JSON registry for the unified Database Observability server."""
+
+from __future__ import annotations
+
+import inspect
+import json
+from dataclasses import dataclass
+from importlib.resources import files
+from types import MappingProxyType
+from typing import Any, Mapping
+
+import oci
+from jsonschema import Draft202012Validator, SchemaError
+
+
+class RegistryError(ValueError):
+    """Raised when packaged discovery metadata is invalid."""
+
+
+_CLIENTS = {
+    "opsi": {"OperationsInsightsClient": oci.opsi.OperationsInsightsClient},
+    "dbm": {
+        "DbManagementClient": oci.database_management.DbManagementClient,
+        "DiagnosabilityClient": oci.database_management.DiagnosabilityClient,
+        "SqlTuningClient": oci.database_management.SqlTuningClient,
+    },
+    "identity": {"IdentityClient": oci.identity.IdentityClient},
+}
+
+
+@dataclass(frozen=True)
+class Registry:
+    skills: tuple[Mapping[str, Any], ...]
+    tools: tuple[Mapping[str, Any], ...]
+    _skills: Mapping[str, Mapping[str, Any]]
+    _tools: Mapping[str, Mapping[str, Any]]
+
+    def get_skill(self, name: str) -> Mapping[str, Any]:
+        try:
+            return self._skills[name]
+        except KeyError as exc:
+            raise RegistryError(f"Unknown skill: {name}") from exc
+
+    def get_tool(self, name: str) -> Mapping[str, Any]:
+        try:
+            return self._tools[name]
+        except KeyError as exc:
+            raise RegistryError(f"Unknown tool: {name}") from exc
+
+    def list_tools(
+        self,
+        skill_names: set[str],
+        keywords: list[str] | None = None,
+    ) -> list[Mapping[str, Any]]:
+        for skill_name in skill_names:
+            self.get_skill(skill_name)
+        selected = [tool for tool in self.tools if skill_names.intersection(tool["skills"])]
+        if keywords:
+            normalized_keywords = [keyword.strip().casefold() for keyword in keywords]
+            if any(not keyword for keyword in normalized_keywords):
+                raise RegistryError("Keywords must be non-empty strings")
+            selected = [
+                tool
+                for tool in selected
+                if all(
+                    keyword
+                    in f"{tool['name'].replace('_', ' ')} {tool['description']}".casefold()
+                    for keyword in normalized_keywords
+                )
+            ]
+        return selected
+
+
+def client_class(service: str, client: str) -> type[Any]:
+    try:
+        return _CLIENTS[service][client]
+    except KeyError as exc:
+        raise RegistryError(f"Unsupported SDK client binding: {service}/{client}") from exc
+
+
+def _read_json(name: str) -> dict[str, Any]:
+    try:
+        return json.loads(files("oracle.oci_oracle_db_observability").joinpath("metadata", name).read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RegistryError(f"Unable to load registry file {name}: {exc}") from exc
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
+def to_jsonable(value: Any) -> Any:
+    """Copy immutable registry values into JSON-compatible response values."""
+    if isinstance(value, Mapping):
+        return {key: to_jsonable(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [to_jsonable(item) for item in value]
+    return value
+
+
+def _validate(skills: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Registry:
+    by_skill = {skill.get("name"): skill for skill in skills}
+    if any(not isinstance(skill.get("name"), str) or not skill["name"] for skill in skills):
+        raise RegistryError("Skill names must be non-empty")
+    if len(by_skill) != len(skills):
+        raise RegistryError("Duplicate skill name")
+    by_tool = {tool.get("name"): tool for tool in tools}
+    if any(not isinstance(tool.get("name"), str) or not tool["name"] for tool in tools):
+        raise RegistryError("Tool names must be non-empty")
+    if len(by_tool) != len(tools):
+        raise RegistryError("Duplicate tool name")
+    referenced = {name for skill in skills for name in skill.get("tools", [])}
+    if referenced != set(by_tool):
+        raise RegistryError("Tools must be referenced by at least one skill, and skill references must resolve")
+    for tool in tools:
+        schema = tool.get("inputSchema")
+        if not isinstance(schema, dict) or schema.get("type") != "object":
+            raise RegistryError(f"Tool has invalid input schema: {tool.get('name')}")
+        if schema.get("additionalProperties") is True:
+            raise RegistryError(f"Tool has unrestricted input schema: {tool.get('name')}")
+        try:
+            Draft202012Validator.check_schema(schema)
+        except SchemaError as exc:
+            raise RegistryError(f"Tool has invalid JSON schema: {tool.get('name')}") from exc
+        if not set(tool.get("skills", [])) or not set(tool["skills"]).issubset(by_skill):
+            raise RegistryError(f"Tool has invalid skill membership: {tool.get('name')}")
+        if tool["name"] not in {name for skill in skills if skill["name"] in tool["skills"] for name in skill["tools"]}:
+            raise RegistryError(f"Tool/skill membership mismatch: {tool['name']}")
+        cls = client_class(tool.get("service"), tool.get("client"))
+        method = getattr(cls, tool.get("operation", ""), None)
+        if not callable(method) or tool["operation"].startswith("_"):
+            raise RegistryError(f"Tool has invalid SDK operation binding: {tool['name']}")
+    frozen_skills = tuple(_freeze(skill) for skill in skills)
+    frozen_tools = tuple(_freeze(tool) for tool in tools)
+    return Registry(frozen_skills, frozen_tools, MappingProxyType(dict(zip(by_skill, frozen_skills))), MappingProxyType(dict(zip(by_tool, frozen_tools))))
+
+
+def load_registry() -> Registry:
+    manifest = _read_json("manifest.json")
+    skills = _read_json(manifest["skills"])["skills"]
+    tools = _read_json(manifest["tools"])["tools"]
+    return _validate(skills, tools)
