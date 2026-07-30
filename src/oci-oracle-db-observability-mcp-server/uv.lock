@@ -2,12 +2,6 @@ version = 1
 revision = 2
 requires-python = ">=3.13"
 
-[manifest]
-members = [
-    "oracle-mcp-common",
-    "oracle-oci-db-observability",
-]
-
 [[package]]
 name = "aiofile"
 version = "3.11.1"
@@ -718,28 +712,14 @@ wheels = [
 [[package]]
 name = "oracle-mcp-common"
 version = "0.1.2"
-source = { editable = "../common" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp" },
     { name = "oci" },
 ]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastmcp", specifier = ">=3.2.4,<4.0.0" },
-    { name = "oci", specifier = ">=2.179.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
+sdist = { url = "https://files.pythonhosted.org/packages/4d/6b/100af78875f52330c2818b6cc785dadfa974d4ce7eb6576e7917abd0e5f4/oracle_mcp_common-0.1.2.tar.gz", hash = "sha256:b01eceb3e17392bfcb65b589ba8f56f1f3fc9205a0498aba2eb79e89227d3ac8", size = 73783, upload_time = "2026-07-29T19:10:55.142Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/63/698ff36d71a2c58c4a2112ba2495490d2d978720a8b18894d1b831012864/oracle_mcp_common-0.1.2-py3-none-any.whl", hash = "sha256:7d476b54b962b721aadd1f2439bc117e244a87b4143fddef8f9defbbbfdb19b8", size = 11868, upload_time = "2026-07-29T19:10:53.99Z" },
 ]
 
 [[package]]
@@ -768,7 +748,7 @@ requires-dist = [
     { name = "fastmcp", specifier = "==3.2.4" },
     { name = "jsonschema", specifier = ">=4.25.0,<5.0.0" },
     { name = "oci", specifier = "==2.179.0" },
-    { name = "oracle-mcp-common", editable = "../common" },
+    { name = "oracle-mcp-common", specifier = ">=0.1.2,<0.2.0" },
     { name = "pydantic", specifier = "==2.12.3" },
 ]
 

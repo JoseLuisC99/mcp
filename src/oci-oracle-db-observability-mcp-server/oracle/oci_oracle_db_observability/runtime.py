@@ -25,34 +25,40 @@ def configure_http_auth(policy: IDCSHttpAuth) -> None:
     _http_auth = policy
 
 
-def _client_context() -> tuple[dict[str, Any], Any, str | None]:
-    if _http_auth is not None:
-        token = get_access_token()
-        if token is None:
-            raise RuntimeError("HTTP requests require an authenticated IDCS access token.")
-        context = _http_auth.context_for(token.token)
-        tenancy_id = getattr(context.signer, "tenancy_id", None) or os.getenv("OCI_MCP_TENANCY_ID_OVERRIDE")
-        return ({**context.config, "additional_user_agent": _USER_AGENT}, context.signer, tenancy_id)
+def _get_http_config_and_signer(access_token: Any) -> tuple[dict[str, Any], Any, str | None]:
+    """Build caller-specific OCI SDK authentication for one HTTP request."""
+    if _http_auth is None:
+        raise RuntimeError("HTTP authentication policy has not been initialized.")
+    context = _http_auth.context_for(access_token.token if access_token else None)
+    tenancy_id = getattr(context.signer, "tenancy_id", None) or os.getenv("OCI_MCP_TENANCY_ID_OVERRIDE")
+    return ({**context.config, "additional_user_agent": _USER_AGENT}, context.signer, tenancy_id)
+
+
+def _get_config_and_signer(access_token: Any | None = None) -> tuple[dict[str, Any], Any, str | None]:
+    """Resolve HTTP caller credentials or configured stdio OCI credentials."""
+    if access_token is not None:
+        return _get_http_config_and_signer(access_token)
     context = build_auth_context()
     return ({**context.config, "additional_user_agent": _USER_AGENT}, context.signer, context.tenancy_id)
 
 
 @lru_cache(maxsize=None)
 def _stdio_client(service: str, client_name: str) -> Any:
-    config, signer, _ = _client_context()
+    config, signer, _ = _get_config_and_signer()
     return client_class(service, client_name)(config, signer=signer)
 
 
 def _client(service: str, client_name: str) -> Any:
-    if _http_auth is None:
+    access_token = get_access_token()
+    if access_token is None:
         return _stdio_client(service, client_name)
-    config, signer, _ = _client_context()
+    config, signer, _ = _get_config_and_signer(access_token)
     return client_class(service, client_name)(config, signer=signer)
 
 
 def identity_bootstrap_client() -> tuple[Any, str]:
     """Create the Identity client and resolve the configured tenancy scope."""
-    config, signer, tenancy_id = _client_context()
+    config, signer, tenancy_id = _get_config_and_signer(get_access_token())
     if not tenancy_id:
         raise ValueError("Configured OCI authentication context is missing tenancy.")
     client = client_class("identity", "IdentityClient")(config, signer=signer)
@@ -98,8 +104,11 @@ def _coerce(value: Any, type_name: str | None, models: Any) -> Any:
     payload = {key: item for key, item in value.items() if key != "model_type"}
     swagger = getattr(model, "swagger_types", {})
     payload = {key: _coerce(item, swagger.get(key), models) for key, item in payload.items()}
+    from_dict = getattr(oci.util, "from_dict", None)
+    if not callable(from_dict):
+        return model(**payload)
     try:
-        return oci.util.from_dict(model, payload)
+        return from_dict(model, payload)
     except (TypeError, ValueError):
         return model(**payload)
 

@@ -36,6 +36,10 @@ uvx oracle.oci-db-observability-mcp-server
 Register `${ORACLE_MCP_BASE_URL}/auth/callback` in the OCI IAM confidential
 application. If `IDCS_REQUIRED_SCOPES` is unset, the default scope is
 `oci_mcp.db_observability.invoke` together with the standard OpenID scopes.
+The server uses `oracle-mcp-common` 0.1.2 or later for OCI authentication. For
+HTTP token-exchange authentication, set `OCI_MCP_TENANCY_ID_OVERRIDE` when the
+caller signer does not expose a tenancy and `list_compartments` is called
+without `root_compartment_id`.
 
 ## Discovery workflow
 
