@@ -34,9 +34,6 @@ build-backend = "hatchling.build"
 packages = ["oracle"]
 exclude = ["/oracle/**/tests/**"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"oracle/oci_oracle_db_observability/metadata" = "oracle/oci_oracle_db_observability/metadata"
-
 [dependency-groups]
 dev = [
     "openapi-pydantic>=0.5.1",
