@@ -43,13 +43,13 @@ without `root_compartment_id`.
 
 ## Discovery workflow
 
-1. Call `list_compartments` or `get_compartment` to resolve OCI scope.
-2. Call `list_skills` and select the smallest relevant skill set.
-3. Call `list_tools` for those skills, optionally with separate `keywords`.
+1. Call `list_oci_compartments` or `get_oci_compartment` to resolve OCI scope.
+2. Call `list_dbo_skills` and select the smallest relevant skill set.
+3. Call `list_dbo_tools` for those skills, optionally with separate `keywords`.
    Every keyword must match a tool name or description; use
    `['database', 'insights']`, not `['database_insights']`.
-4. Call `describe_tool` for the chosen operation.
-5. Call `invoke_tool` with arguments matching the returned schema.
+4. Call `describe_dbo_tool` for the chosen operation.
+5. Call `invoke_dbo_tool` with arguments matching the returned schema.
 
 The complete skill and tool catalogs are packaged as JSON under
 `oracle/oci_oracle_db_observability/metadata`. The tool catalog contains

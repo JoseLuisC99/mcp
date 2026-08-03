@@ -10,12 +10,11 @@ from .runtime import identity_bootstrap_client, serialize_response
 registry = load_registry()
 mcp = FastMCP(
     name="oracle.oci-db-observability-mcp-server",
-    instructions=(
-        "Use list_compartments or get_compartment to resolve OCI scope. Then call "
-        "list_skills, select the smallest relevant skills, and call list_tools. Use "
-        "separate keywords such as ['database', 'insights'], not one underscored SDK "
-        "name. Call describe_tool before invoke_tool."
-    ),
+    instructions="Resolve OCI scope with `list_compartments` or `get_compartment`. Use `list_dbo_skills` to discover "
+                 "the smallest relevant Oracle Database Observability capability for the user's goal, then `list_dbo_tools` "
+                 "to find candidate operations using separate plain-language keywords only. Do not use underscored SDK "
+                 "names as search terms. Before execution, call `describe_dbo_tool` to get the exact contract, then "
+                 "`invoke_dbo_tool` with arguments that match the returned input schema exactly."
 )
 
 @mcp.tool(
@@ -25,7 +24,7 @@ mcp = FastMCP(
     ),
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 )
-def get_compartment(
+def get_oci_compartment(
     compartment_id: str = Field(
         ...,
         description="Required OCI compartment OCID to retrieve, for example ocid1.compartment...",
@@ -43,7 +42,7 @@ def get_compartment(
     ),
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 )
-def list_compartments(
+def list_oci_compartments(
     root_compartment_id: str | None = Field(None, description="Optional root compartment OCID. Omit it to start at the authenticated tenancy."),
     include_subtree: bool = Field(True, description="When true, include all descendant compartments below the root."),
     access_level: str = Field("ACCESSIBLE", description="Visibility filter: ACCESSIBLE returns compartments available to the caller; ANY includes all visible states."),
@@ -64,23 +63,22 @@ def list_compartments(
     return {"items": items, "count": len(items)}
 
 @mcp.tool(
-    description=(
-        "Start Database Observability discovery here. Returns compact skill summaries, not "
-        "operation schemas. Select the smallest skills relevant to the user's goal, then call list_tools."
-    )
+    description="Entry point for Oracle Database Observability capability discovery. Returns a compact list of available "
+                "skills with short summaries only; does not return operation schemas. Use this to resolve the smallest "
+                "relevant capability for the user’s request, then call `list_dbo_tools` for executable operations."
 )
-def list_skills() -> dict[str, Any]:
+def list_dbo_skills() -> dict[str, Any]:
     return {"skills": [{"name": s["name"], "description": s["description"], "toolCount": len(s["tools"])} for s in registry.skills]}
 
 @mcp.tool(
-    description=(
-        "Discover registered OCI operations within selected skills. Use keywords as separate "
-        "plain-language terms that must all match a tool name or description; for example, "
-        "use ['database', 'insights'] to find list_database_insights. Do not use an underscored "
-        "SDK operation name as one keyword. Call describe_tool on a selected result before invoke_tool."
-    )
+    description="Discovery endpoint for Oracle Database Observability operations within selected skills. Use it to find "
+                "the smallest executable operation that matches the user's goal. Search terms `keywords` must be "
+                "separate plain-language keywords, and every keyword must match a tool name or description; "
+                "for example, `['database', 'insights']` may resolve `list_database_insights`. Do not use underscored "
+                "SDK operation names as search keywords. Resolve a candidate with `describe_dbo_tool` before "
+                "calling `invoke_dbo_tool`."
 )
-def list_tools(
+def list_dbo_tools(
     skill_names: list[str] = Field(
         ...,
         min_length=1,
@@ -109,12 +107,11 @@ def list_tools(
     }
 
 @mcp.tool(
-    description=(
-        "Get the complete invocation contract for one tool returned by list_tools. Returns the "
-        "exact JSON input schema, required arguments, and mutability. Use immediately before invoke_tool."
-    )
+    description="Retrieve the complete invocation contract for one Oracle Database Observability tool selected from "
+                "`list_dbo_tools`. Returns the exact JSON input schema, required fields, and mutability metadata. "
+                "Must be called immediately before `invoke_dbo_tool`."
 )
-def describe_tool(
+def describe_dbo_tool(
     tool_name: str = Field(..., description="Required logical tool name returned by list_tools, for example list_database_insights."),
 ) -> dict[str, Any]:
     tool = registry.get_tool(tool_name)
@@ -127,13 +124,11 @@ def describe_tool(
     }
 
 @mcp.tool(
-    description=(
-        "Execute one registered OCI Database Observability operation. First call describe_tool, "
-        "then supply an arguments object that conforms exactly to its inputSchema. This is the only "
-        "tool that invokes a catalog operation."
-    )
+    description="Invoke one registered Oracle Database Observability operation. Must be preceded by `describe_dbo_tool`, "
+                "and the supplied arguments object must conform exactly to the selected tool's `inputSchema`. This is "
+                "the sole endpoint that executes catalog operations."
 )
-def invoke_tool(
+def invoke_dbo_tool(
     tool_name: str = Field(..., description="Required logical tool name returned by list_tools and described with describe_tool."),
     arguments: dict[str, Any] = Field(default_factory=dict, description="Required JSON object of SDK arguments matching the exact inputSchema from describe_tool."),
 ) -> Any:
