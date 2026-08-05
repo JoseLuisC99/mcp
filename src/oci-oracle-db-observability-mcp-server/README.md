@@ -45,16 +45,32 @@ without `root_compartment_id`.
 
 1. Call `list_oci_compartments` or `get_oci_compartment` to resolve OCI scope.
 2. Call `list_dbo_skills` and select the smallest relevant skill set.
-3. Call `list_dbo_tools` for those skills, optionally with separate `keywords`.
-   Every keyword must match a tool name or description; use
-   `['database', 'insights']`, not `['database_insights']`.
+3. Call `list_dbo_tools` for those skills to list candidate operations.
 4. Call `describe_dbo_tool` for the chosen operation.
 5. Call `invoke_dbo_tool` with arguments matching the returned schema.
 
 The complete skill and tool catalogs are packaged as JSON under
-`oracle/oci_oracle_db_observability/metadata`. The tool catalog contains
-OPSI and DBM SDK bindings; it does not expose the individual operations as MCP
-tools.
+`oracle/oci_oracle_db_observability_mcp_server/metadata`. Skills organize
+read-only workflows such as inventory, diagnostics, performance, and fleet
+analysis. Their concise descriptions are MCP discovery metadata, not MCP
+resources; the detailed OEM.ai skill files are not packaged or required at
+runtime. The tool catalog contains OPSI and DBM SDK bindings; it does not
+expose the individual operations as MCP tools.
+
+## Pagination
+
+Paginated operations accept an optional `page` argument. Responses contain the
+page data and a `nextPage` token when more results are available:
+
+```json
+{
+  "data": [],
+  "nextPage": "<token>"
+}
+```
+
+Pass the returned `nextPage` value as `page` in the next invocation. Stop when
+`nextPage` is null.
 
 ## Development
 

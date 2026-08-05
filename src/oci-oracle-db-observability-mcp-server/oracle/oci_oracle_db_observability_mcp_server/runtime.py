@@ -14,6 +14,7 @@ from oracle_mcp_common import IDCSHttpAuth, build_auth_context
 
 from . import __project__, __version__
 from .registry import client_class
+from .sdk_schema import parameter_docs
 
 _USER_AGENT = f"{__project__.split('oracle.', 1)[1].removesuffix('-server')}/{__version__}"
 _http_auth: IDCSHttpAuth | None = None
@@ -65,13 +66,19 @@ def identity_bootstrap_client() -> tuple[Any, str]:
     return client, tenancy_id
 
 
-def serialize_response(response: Any) -> Any:
-    """Convert OCI SDK response data to a JSON-safe result."""
-    data = getattr(response, "data", response)
+def _serialize_data(data: Any) -> Any:
+    """Convert a response payload to a JSON-safe value."""
     try:
         return json.loads(json.dumps(oci.util.to_dict(data), default=str))
     except Exception:
         return str(data)
+
+
+def serialize_response(response: Any) -> dict[str, Any]:
+    """Convert an OCI SDK response to JSON-safe data and pagination metadata."""
+    data = getattr(response, "data", response)
+    headers = getattr(response, "headers", {}) or {}
+    return {"data": _serialize_data(data), "nextPage": headers.get("opc-next-page")}
 
 
 def _models_module(client: type[Any]) -> Any:
@@ -117,7 +124,15 @@ def _coerce_arguments(client: Any, operation: str, arguments: Mapping[str, Any])
     method = getattr(client, operation)
     models = _models_module(client.__class__)
     signature = inspect.signature(method)
-    return {key: _coerce(value, _type_name(signature.parameters[key].annotation) if key in signature.parameters else None, models) for key, value in arguments.items()}
+    docs = parameter_docs(method)
+    coerced: dict[str, Any] = {}
+    for key, value in arguments.items():
+        parameter = signature.parameters.get(key)
+        type_name = _type_name(parameter.annotation) if parameter and parameter.kind is not inspect.Parameter.VAR_KEYWORD else None
+        if type_name is None and key in docs:
+            type_name = docs[key][0]
+        coerced[key] = _coerce(value, type_name, models)
+    return coerced
 
 
 def invoke_registered_tool(tool: Mapping[str, Any], arguments: dict[str, Any]) -> Any:

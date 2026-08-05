@@ -5,8 +5,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from oracle.oci_oracle_db_observability import __project__, __version__
-from oracle.oci_oracle_db_observability import runtime
+from oracle.oci_oracle_db_observability_mcp_server import __project__, __version__
+from oracle.oci_oracle_db_observability_mcp_server import runtime
 
 
 EXPECTED_USER_AGENT = f"{__project__.split('oracle.', 1)[1].removesuffix('-server')}/{__version__}"
@@ -128,10 +128,42 @@ def test_invoke_validates_before_creating_sdk_client(monkeypatch) -> None:
         runtime.invoke_registered_tool(tool, {})
 
 
+@pytest.mark.parametrize(
+    ("tool_name", "arguments"),
+    [
+        ("list_database_insights", {"bogus": 1}),
+        ("list_database_insights", {"database_id": ["ocid1.database.oc1..example", 7]}),
+        (
+            "create_managed_database_group",
+            {
+                "create_managed_database_group_details": {
+                    "name": "group",
+                    "compartment_id": "ocid1.compartment.oc1..example",
+                    "bogus": "value",
+                }
+            },
+        ),
+    ],
+)
+def test_registered_tool_rejects_invalid_sdk_schema_arguments_before_client_creation(monkeypatch, tool_name, arguments) -> None:
+    from oracle.oci_oracle_db_observability_mcp_server.registry import load_registry
+
+    monkeypatch.setattr(runtime, "_client", lambda *_args: pytest.fail("client must not be created"))
+
+    with pytest.raises(ValueError, match="Invalid arguments"):
+        runtime.invoke_registered_tool(load_registry().get_tool(tool_name), arguments)
+
+
 def test_response_serialization_and_model_helpers(monkeypatch) -> None:
-    assert runtime.serialize_response(SimpleNamespace(data={"value": "ok"})) == {"value": "ok"}
+    assert runtime.serialize_response(SimpleNamespace(data={"value": "ok"}, headers={"opc-next-page": "page-2"})) == {
+        "data": {"value": "ok"},
+        "nextPage": "page-2",
+    }
     monkeypatch.setattr(runtime.oci.util, "to_dict", lambda _data: (_ for _ in ()).throw(TypeError("bad data")))
-    assert runtime.serialize_response(SimpleNamespace(data="fallback")) == "fallback"
+    assert runtime.serialize_response(SimpleNamespace(data="fallback", headers={})) == {
+        "data": "fallback",
+        "nextPage": None,
+    }
     assert runtime._type_name("ExampleDetails") == "ExampleDetails"
     assert runtime._type_name(int) == "int"
     assert runtime._type_name(object()) is None
@@ -159,6 +191,25 @@ def test_response_serialization_and_model_helpers(monkeypatch) -> None:
     assert runtime._coerce({"name": "unchanged"}, "Missing", models) == {"name": "unchanged"}
 
 
+def test_coerce_arguments_uses_sdk_doc_types_for_generated_kwargs(monkeypatch) -> None:
+    class Details:
+        swagger_types = {"name": "str"}
+
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class Client:
+        def create_example(self, **kwargs):
+            """:param ExampleDetails details: (required) Request details."""
+            return kwargs
+
+    monkeypatch.setattr(runtime, "_models_module", lambda _client: SimpleNamespace(ExampleDetails=Details))
+    result = runtime._coerce_arguments(Client(), "create_example", {"details": {"name": "example"}})
+
+    assert isinstance(result["details"], Details)
+    assert result["details"].kwargs == {"name": "example"}
+
+
 def test_registered_tool_coerces_arguments_serializes_and_wraps_oci_errors(monkeypatch) -> None:
     tool = {
         "name": "example_tool",
@@ -170,10 +221,13 @@ def test_registered_tool_coerces_arguments_serializes_and_wraps_oci_errors(monke
 
     class Client:
         def get_example(self, value: str):
-            return SimpleNamespace(data={"value": value})
+            return SimpleNamespace(data={"value": value}, headers={})
 
     monkeypatch.setattr(runtime, "_client", lambda *_args: Client())
-    assert runtime.invoke_registered_tool(tool, {"value": "ok"}) == {"value": "ok"}
+    assert runtime.invoke_registered_tool(tool, {"value": "ok"}) == {
+        "data": {"value": "ok"},
+        "nextPage": None,
+    }
     with pytest.raises(ValueError, match="arguments must be a JSON object"):
         runtime.invoke_registered_tool(tool, [])
 

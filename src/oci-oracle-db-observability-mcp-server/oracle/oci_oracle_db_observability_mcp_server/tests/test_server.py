@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from oracle.oci_oracle_db_observability import server
+from oracle.oci_oracle_db_observability_mcp_server import server
 
 
 def test_main_runs_stdio_without_http_environment(monkeypatch) -> None:

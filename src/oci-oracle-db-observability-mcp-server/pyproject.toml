@@ -1,5 +1,5 @@
 [project]
-name = "oracle.oci-db-observability"
+name = "oracle.oci-db-observability-mcp-server"
 version = "0.1.0"
 description = "Unified Oracle Database Observability MCP server"
 readme = "README.md"
@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 [project.scripts]
-"oracle.oci-db-observability-mcp-server" = "oracle.oci_oracle_db_observability.server:main"
+"oracle.oci-db-observability-mcp-server" = "oracle.oci_oracle_db_observability_mcp_server.server:main"
 
 [build-system]
 requires = ["hatchling"]

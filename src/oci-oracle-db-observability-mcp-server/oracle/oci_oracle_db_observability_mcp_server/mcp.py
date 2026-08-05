@@ -1,4 +1,3 @@
-"""The four-tool public MCP surface."""
 from __future__ import annotations
 from typing import Any
 from fastmcp import FastMCP
@@ -12,8 +11,7 @@ mcp = FastMCP(
     name="oracle.oci-db-observability-mcp-server",
     instructions="Resolve OCI scope with `list_compartments` or `get_compartment`. Use `list_dbo_skills` to discover "
                  "the smallest relevant Oracle Database Observability capability for the user's goal, then `list_dbo_tools` "
-                 "to find candidate operations using separate plain-language keywords only. Do not use underscored SDK "
-                 "names as search terms. Before execution, call `describe_dbo_tool` to get the exact contract, then "
+                 "to list candidate operations. Before execution, call `describe_dbo_tool` to get the exact contract, then "
                  "`invoke_dbo_tool` with arguments that match the returned input schema exactly."
 )
 
@@ -49,6 +47,7 @@ def list_oci_compartments(
     name: str | None = Field(None, description="Optional exact compartment-name filter."),
     lifecycle_state: str | None = Field(None, description="Optional lifecycle-state filter, such as ACTIVE."),
     limit: int = Field(50, ge=1, le=1000, description="Maximum number of compartments returned in this response."),
+    page: str | None = Field(None, description="Optional nextPage token returned by a previous call."),
 ) -> dict[str, Any]:
     client, tenancy_id = identity_bootstrap_client()
     response = client.list_compartments(
@@ -58,9 +57,11 @@ def list_oci_compartments(
         name=name,
         lifecycle_state=lifecycle_state,
         limit=limit,
+        page=page,
     )
-    items = serialize_response(response)
-    return {"items": items, "count": len(items)}
+    result = serialize_response(response)
+    items = result["data"]
+    return {"items": items, "count": len(items), "nextPage": result["nextPage"]}
 
 @mcp.tool(
     description="Entry point for Oracle Database Observability capability discovery. Returns a compact list of available "
@@ -71,12 +72,9 @@ def list_dbo_skills() -> dict[str, Any]:
     return {"skills": [{"name": s["name"], "description": s["description"], "toolCount": len(s["tools"])} for s in registry.skills]}
 
 @mcp.tool(
-    description="Discovery endpoint for Oracle Database Observability operations within selected skills. Use it to find "
-                "the smallest executable operation that matches the user's goal. Search terms `keywords` must be "
-                "separate plain-language keywords, and every keyword must match a tool name or description; "
-                "for example, `['database', 'insights']` may resolve `list_database_insights`. Do not use underscored "
-                "SDK operation names as search keywords. Resolve a candidate with `describe_dbo_tool` before "
-                "calling `invoke_dbo_tool`."
+    description="Discovery endpoint for Oracle Database Observability operations within selected skills. Use it to list "
+                "candidate operations, then resolve a candidate with `describe_dbo_tool` before calling "
+                "`invoke_dbo_tool`."
 )
 def list_dbo_tools(
     skill_names: list[str] = Field(
@@ -84,14 +82,10 @@ def list_dbo_tools(
         min_length=1,
         description="Required skill names returned by list_skills. Only tools belonging to these skills are searched.",
     ),
-    keywords: list[str] | None = Field(
-        None,
-        description="Optional separate search terms. Every term must match the tool name or description, case-insensitively; use ['database', 'insights'], not ['database_insights'].",
-    ),
-    limit: int = Field(50, ge=1, le=100, description="Maximum compact tool entries to return; use a narrow keyword search before increasing this."),
+    limit: int = Field(50, ge=1, le=100, description="Maximum compact tool entries to return."),
 ) -> dict[str, Any]:
     selected = set(skill_names)
-    tools = registry.list_tools(selected, keywords)
+    tools = registry.list_tools(selected)
     return {
         "count": len(tools),
         "tools": [

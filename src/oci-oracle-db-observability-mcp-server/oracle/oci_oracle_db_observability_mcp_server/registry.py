@@ -50,25 +50,10 @@ class Registry:
     def list_tools(
         self,
         skill_names: set[str],
-        keywords: list[str] | None = None,
     ) -> list[Mapping[str, Any]]:
         for skill_name in skill_names:
             self.get_skill(skill_name)
-        selected = [tool for tool in self.tools if skill_names.intersection(tool["skills"])]
-        if keywords:
-            normalized_keywords = [keyword.strip().casefold() for keyword in keywords]
-            if any(not keyword for keyword in normalized_keywords):
-                raise RegistryError("Keywords must be non-empty strings")
-            selected = [
-                tool
-                for tool in selected
-                if all(
-                    keyword
-                    in f"{tool['name'].replace('_', ' ')} {tool['description']}".casefold()
-                    for keyword in normalized_keywords
-                )
-            ]
-        return selected
+        return [tool for tool in self.tools if skill_names.intersection(tool["skills"])]
 
 
 def client_class(service: str, client: str) -> type[Any]:
@@ -80,7 +65,7 @@ def client_class(service: str, client: str) -> type[Any]:
 
 def _read_json(name: str) -> dict[str, Any]:
     try:
-        return json.loads(files("oracle.oci_oracle_db_observability").joinpath("metadata", name).read_text())
+        return json.loads(files("oracle.oci_oracle_db_observability_mcp_server").joinpath("metadata", name).read_text())
     except (OSError, json.JSONDecodeError) as exc:
         raise RegistryError(f"Unable to load registry file {name}: {exc}") from exc
 
@@ -102,6 +87,42 @@ def to_jsonable(value: Any) -> Any:
     return value
 
 
+def _validate_strict_schema(schema: Mapping[str, Any], path: str = "inputSchema") -> None:
+    """Reject open objects and untyped arrays in packaged tool contracts."""
+    if "oneOf" in schema:
+        variants = schema["oneOf"]
+        if not isinstance(variants, list) or not variants:
+            raise RegistryError(f"Tool has invalid oneOf schema: {path}")
+        for index, variant in enumerate(variants):
+            if not isinstance(variant, Mapping):
+                raise RegistryError(f"Tool has invalid oneOf variant: {path}[{index}]")
+            _validate_strict_schema(variant, f"{path}.oneOf[{index}]")
+        return
+    schema_type = schema.get("type")
+    if schema_type == "array":
+        items = schema.get("items")
+        if not isinstance(items, Mapping) or not items:
+            raise RegistryError(f"Tool has untyped array items: {path}")
+        _validate_strict_schema(items, f"{path}.items")
+    if schema_type != "object":
+        return
+    additional = schema.get("additionalProperties")
+    if additional is None or additional is True:
+        raise RegistryError(f"Tool has unrestricted object schema: {path}")
+    if additional is False:
+        properties = schema.get("properties")
+        if not isinstance(properties, Mapping):
+            raise RegistryError(f"Tool has invalid object properties: {path}")
+        for name, property_schema in properties.items():
+            if not isinstance(property_schema, Mapping):
+                raise RegistryError(f"Tool has invalid property schema: {path}.properties.{name}")
+            _validate_strict_schema(property_schema, f"{path}.properties.{name}")
+    elif isinstance(additional, Mapping):
+        _validate_strict_schema(additional, f"{path}.additionalProperties")
+    else:
+        raise RegistryError(f"Tool has invalid additionalProperties: {path}")
+
+
 def _validate(skills: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Registry:
     by_skill = {skill.get("name"): skill for skill in skills}
     if any(not isinstance(skill.get("name"), str) or not skill["name"] for skill in skills):
@@ -120,8 +141,7 @@ def _validate(skills: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Regi
         schema = tool.get("inputSchema")
         if not isinstance(schema, dict) or schema.get("type") != "object":
             raise RegistryError(f"Tool has invalid input schema: {tool.get('name')}")
-        if schema.get("additionalProperties") is True:
-            raise RegistryError(f"Tool has unrestricted input schema: {tool.get('name')}")
+        _validate_strict_schema(schema)
         try:
             Draft202012Validator.check_schema(schema)
         except SchemaError as exc:
