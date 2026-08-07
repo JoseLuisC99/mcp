@@ -9,7 +9,7 @@ from .runtime import identity_bootstrap_client, serialize_response
 registry = load_registry()
 mcp = FastMCP(
     name="oracle.oci-db-observability-mcp-server",
-    instructions="Resolve OCI scope with `list_compartments` or `get_compartment`. Use `list_dbo_skills` to discover "
+    instructions="Resolve OCI scope with `list_oci_compartments` or `get_oci_compartment`. Use `list_dbo_skills` to discover "
                  "the smallest relevant Oracle Database Observability capability for the user's goal, then `list_dbo_tools` "
                  "to list candidate operations. Before execution, call `describe_dbo_tool` to get the exact contract, then "
                  "`invoke_dbo_tool` with arguments that match the returned input schema exactly."
@@ -80,7 +80,7 @@ def list_dbo_tools(
     skill_names: list[str] = Field(
         ...,
         min_length=1,
-        description="Required skill names returned by list_skills. Only tools belonging to these skills are searched.",
+        description="Required skill names returned by list_dbo_skills. Only tools belonging to these skills are listed.",
     ),
     limit: int = Field(50, ge=1, le=100, description="Maximum compact tool entries to return."),
 ) -> dict[str, Any]:
@@ -106,7 +106,7 @@ def list_dbo_tools(
                 "Must be called immediately before `invoke_dbo_tool`."
 )
 def describe_dbo_tool(
-    tool_name: str = Field(..., description="Required logical tool name returned by list_tools, for example list_database_insights."),
+    tool_name: str = Field(..., description="Required logical tool name returned by list_dbo_tools, for example list_database_insights."),
 ) -> dict[str, Any]:
     tool = registry.get_tool(tool_name)
     return {
@@ -123,7 +123,7 @@ def describe_dbo_tool(
                 "the sole endpoint that executes catalog operations."
 )
 def invoke_dbo_tool(
-    tool_name: str = Field(..., description="Required logical tool name returned by list_tools and described with describe_tool."),
-    arguments: dict[str, Any] = Field(default_factory=dict, description="Required JSON object of SDK arguments matching the exact inputSchema from describe_tool."),
+    tool_name: str = Field(..., description="Required logical tool name returned by list_dbo_tools and described with describe_dbo_tool."),
+    arguments: dict[str, Any] = Field(default_factory=dict, description="Required JSON object of SDK arguments matching the exact inputSchema from describe_dbo_tool."),
 ) -> Any:
     return invoke_registered_tool(registry.get_tool(tool_name), arguments)

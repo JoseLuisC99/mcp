@@ -133,16 +133,6 @@ def test_invoke_validates_before_creating_sdk_client(monkeypatch) -> None:
     [
         ("list_database_insights", {"bogus": 1}),
         ("list_database_insights", {"database_id": ["ocid1.database.oc1..example", 7]}),
-        (
-            "create_managed_database_group",
-            {
-                "create_managed_database_group_details": {
-                    "name": "group",
-                    "compartment_id": "ocid1.compartment.oc1..example",
-                    "bogus": "value",
-                }
-            },
-        ),
     ],
 )
 def test_registered_tool_rejects_invalid_sdk_schema_arguments_before_client_creation(monkeypatch, tool_name, arguments) -> None:

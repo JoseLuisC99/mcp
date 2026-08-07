@@ -23,7 +23,7 @@
   `list_oci_compartments`.
 - Catalog discovery and dispatch through `list_dbo_skills`, `list_dbo_tools`,
   `describe_dbo_tool`, and `invoke_dbo_tool`.
-- 34 workflow skills and 240 read-only OPSI/DBM SDK-backed catalog operations.
+- 34 workflow skills and 229 read-only OPSI/DBM SDK-backed catalog operations.
 
 ### Package and entry point
 

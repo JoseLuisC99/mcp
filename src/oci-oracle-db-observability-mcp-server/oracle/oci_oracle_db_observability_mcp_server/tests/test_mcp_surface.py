@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from oracle.oci_oracle_db_observability_mcp_server import mcp as mcp_module
@@ -18,6 +20,14 @@ async def test_unified_mcp_exposes_only_discovery_dispatch_and_compartment_tools
         "list_dbo_skills",
         "list_dbo_tools",
     }
+
+
+@pytest.mark.asyncio
+async def test_advertised_workflow_references_registered_tools_only() -> None:
+    registered_names = {tool.name for tool in await mcp.list_tools()}
+    advertised_names = set(re.findall(r"`([^`]+)`", mcp.instructions))
+
+    assert advertised_names <= registered_names
 
 
 def test_compartment_tools_use_the_shared_bootstrap_client(monkeypatch) -> None:

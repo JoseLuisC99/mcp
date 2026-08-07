@@ -4,8 +4,7 @@
       "name": "advanced-diagnostics-addm-session-control-bulk-retrieve",
       "description": "ADDM execution, session cancellation, and bulk diagnostic data retrieval for managed databases.",
       "tools": [
-        "addm_tasks",
-        "run_historic_addm"
+        "addm_tasks"
       ]
     },
     {
@@ -81,7 +80,6 @@
       "name": "cloud-exadata-storage",
       "description": "Read-only checks for Cloud Exadata storage connectors, servers, grids, IORM plans, and open alerts.",
       "tools": [
-        "check_cloud_exadata_storage_connector",
         "get_cloud_exadata_storage_connector",
         "get_cloud_exadata_storage_grid",
         "get_cloud_exadata_storage_server",
@@ -95,7 +93,6 @@
       "name": "cloud-inventory-discovery-connectivity",
       "description": "Read-only cloud inventory, discovery, and connector connectivity checks for Cloud DB systems.",
       "tools": [
-        "check_cloud_db_system_connector_connection_status",
         "get_cloud_db_system",
         "get_cloud_db_system_discovery",
         "get_cloud_exadata_infrastructure",
@@ -113,9 +110,7 @@
         "get_named_credential",
         "get_preferred_credential",
         "list_named_credentials",
-        "list_preferred_credentials",
-        "test_named_credential",
-        "test_preferred_credential"
+        "list_preferred_credentials"
       ]
     },
     {
@@ -267,7 +262,6 @@
       "name": "external-exadata-storage",
       "description": "Read-only and connector-management workflows for external Exadata storage resources in OCI Database Management.",
       "tools": [
-        "check_external_exadata_storage_connector",
         "get_external_exadata_storage_connector",
         "get_external_exadata_storage_grid",
         "get_external_exadata_storage_server",
@@ -275,15 +269,13 @@
         "get_open_alert_history",
         "get_top_sql_cpu_activity",
         "list_external_exadata_storage_connectors",
-        "list_external_exadata_storage_servers",
-        "update_external_exadata_storage_connector"
+        "list_external_exadata_storage_servers"
       ]
     },
     {
       "name": "external-inventory-discovery-connectivity",
       "description": "Discovery, inventory, lookup, and connector-connectivity workflows for external DB systems in OCI Database Management.",
       "tools": [
-        "check_external_db_system_connector_connection_status",
         "get_external_db_home",
         "get_external_db_system",
         "get_external_db_system_connector",
@@ -367,11 +359,8 @@
       "name": "managed-database-groups-organize-and-target-sets-of-databases",
       "description": "Managed database group lifecycle and membership workflows in OCI Database Management.",
       "tools": [
-        "add_managed_database_to_managed_database_group",
-        "create_managed_database_group",
         "get_managed_database_group",
-        "list_managed_database_groups",
-        "remove_managed_database_from_managed_database_group"
+        "list_managed_database_groups"
       ]
     },
     {

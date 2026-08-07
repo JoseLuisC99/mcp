@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 from dataclasses import dataclass
 from importlib.resources import files
