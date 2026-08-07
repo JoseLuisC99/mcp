@@ -5,7 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from oracle.oci_oracle_db_observability_mcp_server.registry import RegistryError, _validate, client_class, load_registry
+from oracle.oci_oracle_db_observability_mcp_server.registry import (
+    RegistryError,
+    _read_json,
+    _validate,
+    _validate_strict_schema,
+    client_class,
+    load_registry,
+)
 from oracle.oci_oracle_db_observability_mcp_server.registry import to_jsonable
 from oracle.oci_oracle_db_observability_mcp_server.sdk_schema import (
     _enum_from_description,
@@ -16,6 +23,43 @@ from oracle.oci_oracle_db_observability_mcp_server.sdk_schema import (
     schema_for_operation,
     schema_for_type,
 )
+
+
+class _SimpleModel:
+    swagger_types = {"name": "str", "counts": "list[int]", "labels": "dict(str, bool)"}
+    attribute_map = {"name": "name", "counts": "counts", "labels": "labels"}
+
+    @property
+    def name(self):
+        """**[Required]** A name."""
+
+
+class _PolymorphicModel:
+    swagger_types = {"target": "str"}
+    attribute_map = {"target": "target"}
+
+    @staticmethod
+    def get_subtype(object_dictionary):
+        type = object_dictionary["target"]
+        if type == "INDIVIDUAL":
+            return "_IndividualModel"
+        if type == "GROUP":
+            return "_GroupModel"
+        return "_PolymorphicModel"
+
+
+class _IndividualModel(_PolymorphicModel):
+    swagger_types = {"target": "str", "identifier": "str"}
+    attribute_map = {"target": "target", "identifier": "identifier"}
+
+    @property
+    def identifier(self):
+        """**[Required]** An identifier."""
+
+
+class _GroupModel(_PolymorphicModel):
+    swagger_types = {"target": "str", "identifiers": "list[str]"}
+    attribute_map = {"target": "target", "identifiers": "identifiers"}
 
 
 def test_packaged_registry_has_expected_shape() -> None:
@@ -105,6 +149,31 @@ def test_registry_rejects_open_objects_and_untyped_arrays(mutation, error) -> No
         _validate([{"name": "skill", "tools": [tool["name"]]}], [tool])
 
 
+@pytest.mark.parametrize(
+    ("schema", "error"),
+    [
+        ({"oneOf": []}, "invalid oneOf"),
+        ({"oneOf": ["not-a-schema"]}, "invalid oneOf variant"),
+        ({"type": "array"}, "untyped array"),
+        ({"type": "object", "additionalProperties": False}, "invalid object properties"),
+        ({"type": "object", "properties": {"value": "not-a-schema"}, "additionalProperties": False}, "invalid property schema"),
+        ({"type": "object", "properties": {}, "additionalProperties": "invalid"}, "invalid additionalProperties"),
+    ],
+)
+def test_registry_rejects_invalid_strict_schema_shapes(schema, error) -> None:
+    with pytest.raises(RegistryError, match=error):
+        _validate_strict_schema(schema)
+
+
+def test_registry_accepts_typed_map_schema_and_reports_bad_bindings() -> None:
+    _validate_strict_schema({"type": "object", "additionalProperties": {"type": "string"}})
+
+    with pytest.raises(RegistryError, match="Unsupported SDK client binding"):
+        client_class("missing", "client")
+    with pytest.raises(RegistryError, match="Unable to load registry file"):
+        _read_json("missing.json")
+
+
 def test_sdk_schema_helpers_reject_unresolvable_contracts() -> None:
     def no_expected_kwargs(self, **kwargs):
         return kwargs
@@ -126,3 +195,51 @@ def test_sdk_schema_helpers_reject_unresolvable_contracts() -> None:
         schema_for_type("MissingModel", SimpleNamespace())
     with pytest.raises(ValueError, match="documentation and expected_kwargs differ"):
         schema_for_operation(mismatched_docs, SimpleNamespace())
+
+
+def test_sdk_schema_helpers_build_strict_model_and_polymorphic_contracts() -> None:
+    models = SimpleNamespace(
+        _SimpleModel=_SimpleModel,
+        _PolymorphicModel=_PolymorphicModel,
+        _IndividualModel=_IndividualModel,
+        _GroupModel=_GroupModel,
+    )
+
+    assert schema_for_type("str", models, 'Allowed values are: "A" "B"') == {"type": "string", "enum": ["A", "B"]}
+    assert schema_for_type("list[datetime]", models) == {
+        "type": "array",
+        "items": {"type": "string", "format": "date-time"},
+    }
+    assert schema_for_type("dict(str, list[bool])", models) == {
+        "type": "object",
+        "additionalProperties": {"type": "array", "items": {"type": "boolean"}},
+    }
+    assert schema_for_type("_SimpleModel", models) == {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "counts": {"type": "array", "items": {"type": "integer"}},
+            "labels": {"type": "object", "additionalProperties": {"type": "boolean"}},
+        },
+        "additionalProperties": False,
+        "required": ["name"],
+    }
+    assert schema_for_type("_PolymorphicModel", models) == {
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {"target": {"type": "string", "enum": ["INDIVIDUAL"]}, "identifier": {"type": "string"}},
+                "additionalProperties": False,
+                "required": ["identifier", "target"],
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "enum": ["GROUP"]},
+                    "identifiers": {"type": "array", "items": {"type": "string"}},
+                },
+                "additionalProperties": False,
+                "required": ["target"],
+            },
+        ]
+    }
