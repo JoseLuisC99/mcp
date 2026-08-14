@@ -1,4 +1,10 @@
-"""Immutable JSON registry for the unified Database Observability server."""
+"""
+Copyright (c) 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at
+https://oss.oracle.com/licenses/upl.
+
+Immutable JSON registry for the unified Database Observability server.
+"""
 
 from __future__ import annotations
 

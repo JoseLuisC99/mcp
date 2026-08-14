@@ -1,3 +1,9 @@
+"""
+Copyright (c) 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at
+https://oss.oracle.com/licenses/upl.
+"""
+
 from __future__ import annotations
 from typing import Any
 from fastmcp import FastMCP
@@ -9,23 +15,27 @@ from .runtime import identity_bootstrap_client, serialize_response
 registry = load_registry()
 mcp = FastMCP(
     name="oracle.oci-db-observability-mcp-server",
-    instructions="Resolve OCI scope with `list_oci_compartments` or `get_oci_compartment`. Use `list_dbo_skills` to discover "
-                 "the smallest relevant Oracle Database Observability capability for the user's goal, then `list_dbo_tools` "
-                 "to list candidate operations. Before execution, call `describe_dbo_tool` to get the exact contract, then "
-                 "`invoke_dbo_tool` with arguments that match the returned input schema exactly."
+    instructions="Resolve an OCI compartment name to its OCID with `list_oci_compartments`, or validate an already known "
+                 "OCID with `get_oci_compartment`, when scope is not already known. Pass the resolved compartment OCID "
+                 "to subsequent Database Observability operations. "
+                 "Use `list_dbo_skills` and `list_dbo_tools` when the relevant capability or operation is not already known. "
+                 "Use `describe_dbo_tool` to inspect or confirm a tool's exact contract when its schema is unavailable, "
+                 "outdated, or uncertain. Reuse information from earlier discovery calls when it remains applicable, then "
+                 "call `invoke_dbo_tool` with arguments that match the known input schema exactly."
 )
 
 @mcp.tool(
     description=(
-        "Read-only OCI scope discovery. Retrieve one compartment by its OCID to validate "
-        "the target compartment before discovering Database Observability tools or resources."
+        "Read-only OCI compartment resolution. Use this when the compartment OCID is already known and you want to "
+        "validate or inspect that exact compartment before invoking compartment-scoped Database Observability tools. "
+        "If the user provides a compartment name rather than an OCID, use `list_oci_compartments` first."
     ),
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 def get_oci_compartment(
     compartment_id: str = Field(
         ...,
-        description="Required OCI compartment OCID to retrieve, for example ocid1.compartment...",
+        description="Required OCI compartment OCID to validate or inspect, for example ocid1.compartment...",
     ),
 ) -> Any:
     if not compartment_id:
@@ -35,16 +45,19 @@ def get_oci_compartment(
 
 @mcp.tool(
     description=(
-        "Read-only OCI scope discovery. List accessible compartments and their OCIDs before "
-        "selecting a Database Observability skill or querying compartment-scoped resources."
+        "Read-only OCI compartment name-to-OCID resolution. Use this when the user supplies a compartment name instead "
+        "of an OCID. Set `name` to the requested name and use the returned item's `id` as "
+        "the `compartment_id` in subsequent Database Observability operations. Use `root_compartment_id` to narrow the "
+        "search; by default, search descendants from the authenticated tenancy. If multiple compartments share a name, "
+        "inspect their IDs and hierarchy before continuing."
     ),
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 def list_oci_compartments(
-    root_compartment_id: str | None = Field(None, description="Optional root compartment OCID. Omit it to start at the authenticated tenancy."),
+    root_compartment_id: str | None = Field(None, description="Optional root compartment OCID that limits name resolution to this compartment and its descendants. Omit it to search from the authenticated tenancy."),
     include_subtree: bool = Field(True, description="When true, include all descendant compartments below the root."),
     access_level: str = Field("ACCESSIBLE", description="Visibility filter: ACCESSIBLE returns compartments available to the caller; ANY includes all visible states."),
-    name: str | None = Field(None, description="Optional exact compartment-name filter."),
+    name: str | None = Field(None, description="Optional exact compartment-name filter for resolving a user-provided name to one or more compartment OCIDs."),
     lifecycle_state: str | None = Field(None, description="Optional lifecycle-state filter, such as ACTIVE."),
     limit: int = Field(50, ge=1, le=1000, description="Maximum number of compartments returned in this response."),
     page: str | None = Field(None, description="Optional nextPage token returned by a previous call."),
@@ -65,16 +78,17 @@ def list_oci_compartments(
 
 @mcp.tool(
     description="Entry point for Oracle Database Observability capability discovery. Returns a compact list of available "
-                "skills with short summaries only; does not return operation schemas. Use this to resolve the smallest "
-                "relevant capability for the user’s request, then call `list_dbo_tools` for executable operations."
+        "skills with short summaries only; does not return operation schemas. Use it when the relevant capability "
+                "is not already known, and reuse prior results when they remain applicable."
 )
 def list_dbo_skills() -> dict[str, Any]:
     return {"skills": [{"name": s["name"], "description": s["description"], "toolCount": len(s["tools"])} for s in registry.skills]}
 
 @mcp.tool(
     description="Discovery endpoint for Oracle Database Observability operations within selected skills. Use it to list "
-                "candidate operations, then resolve a candidate with `describe_dbo_tool` before calling "
-                "`invoke_dbo_tool`."
+                "candidate operations when the required operation is not already known. Reuse prior results when they "
+                "remain applicable, and use `describe_dbo_tool` to inspect or confirm a schema when needed before "
+                "calling `invoke_dbo_tool`."
 )
 def list_dbo_tools(
     skill_names: list[str] = Field(
@@ -103,7 +117,8 @@ def list_dbo_tools(
 @mcp.tool(
     description="Retrieve the complete invocation contract for one Oracle Database Observability tool selected from "
                 "`list_dbo_tools`. Returns the exact JSON input schema, required fields, and mutability metadata. "
-                "Must be called immediately before `invoke_dbo_tool`."
+                "Call it when the schema is unavailable, outdated, or uncertain; a previously retrieved applicable "
+                "schema may be reused."
 )
 def describe_dbo_tool(
     tool_name: str = Field(..., description="Required logical tool name returned by list_dbo_tools, for example list_database_insights."),
@@ -118,12 +133,13 @@ def describe_dbo_tool(
     }
 
 @mcp.tool(
-    description="Invoke one registered Oracle Database Observability operation. Must be preceded by `describe_dbo_tool`, "
-                "and the supplied arguments object must conform exactly to the selected tool's `inputSchema`. This is "
-                "the sole endpoint that executes catalog operations."
+    description="Invoke one registered Oracle Database Observability operation. The supplied arguments object must "
+                "conform exactly to the selected tool's known `inputSchema`; use `describe_dbo_tool` first when that "
+                "schema is unavailable, outdated, or uncertain. This is the sole endpoint that executes catalog "
+                "operations."
 )
 def invoke_dbo_tool(
-    tool_name: str = Field(..., description="Required logical tool name returned by list_dbo_tools and described with describe_dbo_tool."),
-    arguments: dict[str, Any] = Field(default_factory=dict, description="Required JSON object of SDK arguments matching the exact inputSchema from describe_dbo_tool."),
+    tool_name: str = Field(..., description="Required logical tool name returned by list_dbo_tools or otherwise known."),
+    arguments: dict[str, Any] = Field(default_factory=dict, description="Required JSON object of SDK arguments matching the exact known inputSchema."),
 ) -> Any:
     return invoke_registered_tool(registry.get_tool(tool_name), arguments)

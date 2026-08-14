@@ -1,4 +1,10 @@
-"""Derive strict JSON Schema contracts from the locked OCI Python SDK."""
+"""
+Copyright (c) 2026, Oracle and/or its affiliates.
+Licensed under the Universal Permissive License v1.0 as shown at
+https://oss.oracle.com/licenses/upl.
+
+Derive strict JSON Schema contracts from the locked OCI Python SDK.
+"""
 from __future__ import annotations
 
 import inspect

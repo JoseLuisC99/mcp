@@ -30,3 +30,6 @@
 - Distribution: `oracle.oci-db-observability-mcp-server`.
 - Console entry point: `oracle.oci-db-observability-mcp-server`.
 - Python package: `oracle.oci_oracle_db_observability_mcp_server`.
+- Discovery guidance permits reuse of applicable skill, tool, and schema
+  information from earlier calls instead of requiring the full workflow for
+  every invocation.

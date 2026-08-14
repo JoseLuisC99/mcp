@@ -1070,11 +1070,11 @@
           },
           "compare_baseline_time": {
             "type": "string",
-            "description": "The baseline time for metrics comparison."
+            "description": "The baseline time for metrics comparison. Use UTC ISO 8601 format with milliseconds: YYYY-MM-DDThh:mm:ss.SSSZ."
           },
           "compare_target_time": {
             "type": "string",
-            "description": "The target time for metrics comparison."
+            "description": "The target time for metrics comparison. Use UTC ISO 8601 format with milliseconds: YYYY-MM-DDThh:mm:ss.SSSZ."
           },
           "compare_type": {
             "type": "string",
@@ -1107,7 +1107,21 @@
           },
           "filter_by_metric_names": {
             "type": "string",
-            "description": "The filter used to retrieve a specific set of metrics by passing the desired metric names with a comma separator. Note that, by default, the service returns all supported metrics."
+            "enum": [
+              "CPUTime",
+              "DBTime",
+              "CpuCount",
+              "IOPS",
+              "IOThroughput",
+              "MemoryUsage",
+              "StorageAllocated",
+              "StorageUsed",
+              "MonitoringStatus",
+              "WaitTime",
+              "CpuUtilization",
+              "StorageUtilization"
+            ],
+            "description": "The filter used to retrieve a specific metric. Allowed values are CPUTime, DBTime, CpuCount, IOPS, IOThroughput, MemoryUsage, StorageAllocated, StorageUsed, MonitoringStatus, WaitTime, CpuUtilization, and StorageUtilization. Omit this parameter to return all supported metrics."
           },
           "limit": {
             "type": "integer",

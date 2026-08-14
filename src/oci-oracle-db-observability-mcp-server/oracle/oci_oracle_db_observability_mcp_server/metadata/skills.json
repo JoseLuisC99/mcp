@@ -2,7 +2,7 @@
   "skills": [
     {
       "name": "advanced-diagnostics-addm-session-control-bulk-retrieve",
-      "description": "ADDM execution, session cancellation, and bulk diagnostic data retrieval for managed databases.",
+      "description": "Read-only ADDM task inventory for managed databases.",
       "tools": [
         "addm_tasks"
       ]
@@ -78,7 +78,7 @@
     },
     {
       "name": "cloud-exadata-storage",
-      "description": "Read-only checks for Cloud Exadata storage connectors, servers, grids, IORM plans, and open alerts.",
+      "description": "Read-only inventory and inspection of Cloud Exadata storage connectors, servers, grids, IORM plans, and open alerts.",
       "tools": [
         "get_cloud_exadata_storage_connector",
         "get_cloud_exadata_storage_grid",
@@ -91,7 +91,7 @@
     },
     {
       "name": "cloud-inventory-discovery-connectivity",
-      "description": "Read-only cloud inventory, discovery, and connector connectivity checks for Cloud DB systems.",
+      "description": "Read-only Cloud DB system inventory and discovery, including connector metadata and availability metrics.",
       "tools": [
         "get_cloud_db_system",
         "get_cloud_db_system_discovery",
@@ -105,7 +105,7 @@
     },
     {
       "name": "credentials-and-authentication-preferred-named",
-      "description": "Read-only and test workflows for named credentials and preferred credential mappings in OCI DBM.",
+      "description": "Read-only named credential and preferred credential inventory and mapping inspection in OCI DBM.",
       "tools": [
         "get_named_credential",
         "get_preferred_credential",
@@ -260,7 +260,7 @@
     },
     {
       "name": "external-exadata-storage",
-      "description": "Read-only and connector-management workflows for external Exadata storage resources in OCI Database Management.",
+      "description": "Read-only inventory and inspection of external Exadata storage connectors, servers, grids, IORM plans, alerts, and top SQL CPU activity.",
       "tools": [
         "get_external_exadata_storage_connector",
         "get_external_exadata_storage_grid",
@@ -274,7 +274,7 @@
     },
     {
       "name": "external-inventory-discovery-connectivity",
-      "description": "Discovery, inventory, lookup, and connector-connectivity workflows for external DB systems in OCI Database Management.",
+      "description": "Read-only discovery, inventory, and connector inspection for external DB systems in OCI Database Management.",
       "tools": [
         "get_external_db_home",
         "get_external_db_system",
@@ -334,7 +334,7 @@
     },
     {
       "name": "job-orchestration-and-execution-tracking",
-      "description": "Job definition, run tracking, execution tracking, and status summary workflows in OCI Database Management.",
+      "description": "Read-only job, run, and execution inventory with status summaries in OCI Database Management.",
       "tools": [
         "get_job",
         "get_job_execution",
@@ -357,7 +357,7 @@
     },
     {
       "name": "managed-database-groups-organize-and-target-sets-of-databases",
-      "description": "Managed database group lifecycle and membership workflows in OCI Database Management.",
+      "description": "Read-only managed database group inventory and detail inspection in OCI Database Management.",
       "tools": [
         "get_managed_database_group",
         "list_managed_database_groups"
@@ -392,7 +392,7 @@
     },
     {
       "name": "opsi-configurations-and-datastores",
-      "description": "Manage and inspect Operations Insights configuration resources and datastores, including datastore encryption-key history, for administrative lifecycle governance.",
+      "description": "Read-only Operations Insights configuration inventory and detail inspection.",
       "tools": [
         "get_opsi_configuration",
         "list_opsi_configurations"
