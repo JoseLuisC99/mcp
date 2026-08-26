@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Tool surface
+
+- Added the `database-and-infra-observability-metric-catalog` skill with local
+  metric catalog search/get/list handlers, a catalog-validated live OCI
+  Monitoring metric reader, and read-only OCI Monitoring alarm definition and
+  status operations.
+
 ## 0.1.0 - 2026-08-05
 
 ### Server

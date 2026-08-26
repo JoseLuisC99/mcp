@@ -1,9 +1,10 @@
 # OCI Database Observability MCP Server
 
-This package provides one MCP server for OCI Operations Insights (OPSI) and OCI
-Database Management (DBM). It exposes two read-only compartment discovery
-tools plus four catalog discovery and invocation tools. The catalog contains
-only operations with exact OCI Python SDK bindings.
+This package provides one MCP server for OCI Operations Insights (OPSI),
+Database Management (DBM), and OCI Monitoring observability workflows. It
+exposes two read-only compartment discovery tools plus four catalog discovery
+and invocation tools. The catalog contains read-only OCI SDK bindings and
+packaged metadata handlers.
 
 ## Running
 
@@ -59,8 +60,20 @@ The complete skill and tool catalogs are packaged as JSON under
 read-only workflows such as inventory, diagnostics, performance, and fleet
 analysis. Their concise descriptions are MCP discovery metadata, not MCP
 resources; the detailed OEM.ai skill files are not packaged or required at
-runtime. The tool catalog contains OPSI and DBM SDK bindings; it does not
-expose the individual operations as MCP tools.
+runtime. The tool catalog contains OPSI, DBM, and OCI Monitoring operations;
+it does not expose the individual operations as MCP tools.
+
+## OCI Monitoring metric and alarm workflow
+
+The `database-and-infra-observability-metric-catalog` skill provides three
+local catalog tools (search, get, and list), one live metric reader, and three
+read-only alarm tools. First identify a metric using the local catalog, then
+read a specific metric with its exact namespace/name, explicit RFC 3339 time
+window, allowed dimensions, aggregation, interval, and resolution. The metric
+reader turns that request into MQL and makes one
+`MonitoringClient.summarize_metrics_data` call. Alarm definition and state
+tools each make one respective OCI Monitoring SDK call. No tool changes OCI
+resources.
 
 ## Pagination
 

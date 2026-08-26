@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from datetime import datetime
 from functools import lru_cache
 from typing import Any, Mapping, get_args, get_origin
 
@@ -18,6 +19,7 @@ from fastmcp.server.dependencies import get_access_token
 from oracle_mcp_common import IDCSHttpAuth, build_auth_context
 
 from . import __project__, __version__
+from .metric_catalog import MetricCatalogError, load_metric_catalog
 from .registry import client_class, compartment_requirements
 from .sdk_schema import parameter_docs
 
@@ -168,6 +170,83 @@ def _validate_compartment_scope(tool: Mapping[str, Any], arguments: Mapping[str,
             raise RuntimeError(f"Unable to validate compartment OCID {compartment_id}: {exc}") from exc
 
 
+def _metric_mql(arguments: Mapping[str, Any]) -> str:
+    def quote(value: str) -> str:
+        return f'"{value.replace("\\", "\\\\").replace(chr(34), "\\\"")}"'
+
+    filters = ", ".join(
+        f"{name} = {quote(value)}"
+        for name, value in sorted(arguments.get("dimension_filters", {}).items())
+    )
+    selector = f'{arguments["metric_name"]}[{arguments["interval"]}]'
+    grouping = f'.groupBy({arguments["group_by"]})' if arguments.get("group_by") else ""
+    return f"{selector}{{{filters}}}{grouping}.{arguments['aggregation']}()" if filters else f"{selector}{grouping}.{arguments['aggregation']}()"
+
+
+def _parse_metric_time(value: str, field: str) -> datetime:
+    """Parse the required RFC 3339 metric window boundary."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an RFC 3339 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include a UTC offset")
+    return parsed
+
+
+def _invoke_metric_read(tool: Mapping[str, Any], arguments: Mapping[str, Any]) -> dict[str, Any]:
+    catalog = load_metric_catalog()
+    metric = catalog.get([{"namespace": arguments["namespace"], "name": arguments["metric_name"]}])["items"]
+    if not metric:
+        raise ValueError(f"Metric {arguments['namespace']}/{arguments['metric_name']} is not available in catalog {catalog.catalog_id}.")
+    supported_dimensions = set(metric[0].get("dimensions", []))
+    dimension_filters = arguments.get("dimension_filters", {})
+    if not isinstance(dimension_filters, Mapping) or not all(isinstance(name, str) and isinstance(value, str) for name, value in dimension_filters.items()):
+        raise ValueError("dimension_filters must map dimension names to string values")
+    requested_dimensions = set(dimension_filters)
+    if arguments.get("group_by"):
+        requested_dimensions.add(arguments["group_by"])
+    unsupported = sorted(requested_dimensions - supported_dimensions)
+    if unsupported:
+        raise ValueError(f"Unsupported dimensions for {arguments['namespace']}/{arguments['metric_name']}: {', '.join(unsupported)}")
+    start_time = _parse_metric_time(arguments["start_time"], "start_time")
+    end_time = _parse_metric_time(arguments["end_time"], "end_time")
+    if start_time >= end_time:
+        raise ValueError("start_time must be earlier than end_time")
+    client = _client(str(tool["service"]), str(tool["client"]))
+    details = oci.monitoring.models.SummarizeMetricsDataDetails(
+        namespace=arguments["namespace"],
+        query=_metric_mql(arguments),
+        resolution=arguments["resolution"],
+        start_time=start_time,
+        end_time=end_time,
+        resource_group=arguments.get("resource_group"),
+    )
+    try:
+        response = client.summarize_metrics_data(
+            compartment_id=arguments["compartment_id"],
+            summarize_metrics_data_details=details,
+            compartment_id_in_subtree=arguments.get("compartment_id_in_subtree"),
+        )
+    except Exception as exc:
+        raise RuntimeError(f"OCI operation {tool['name']} failed: {exc}") from exc
+    result = serialize_response(response)
+    max_results = arguments.get("max_results")
+    if max_results is not None and isinstance(result["data"], list):
+        result["data"] = result["data"][:max_results]
+    result["mql"] = _metric_mql(arguments)
+    return result
+
+
+def _invoke_metadata_tool(tool: Mapping[str, Any], arguments: Mapping[str, Any]) -> dict[str, Any]:
+    catalog = load_metric_catalog()
+    try:
+        handler = str(tool["handler"]).rsplit(".", 1)[-1]
+        return getattr(catalog, handler)(**arguments)
+    except (AttributeError, MetricCatalogError) as exc:
+        raise RuntimeError(f"Metadata tool {tool['name']} failed: {exc}") from exc
+
+
 def invoke_registered_tool(tool: Mapping[str, Any], arguments: dict[str, Any]) -> Any:
     if not isinstance(arguments, dict):
         raise ValueError("arguments must be a JSON object")
@@ -176,6 +255,10 @@ def invoke_registered_tool(tool: Mapping[str, Any], arguments: dict[str, Any]) -
     if errors:
         raise ValueError(f"Invalid arguments: {errors[0].message}")
     _validate_compartment_scope(tool, arguments)
+    if tool.get("kind") == "metadata":
+        return _invoke_metadata_tool(tool, arguments)
+    if tool.get("adapter") == "monitoring.metric_read":
+        return _invoke_metric_read(tool, arguments)
     client = _client(str(tool["service"]), str(tool["client"]))
     try:
         response = getattr(client, tool["operation"])(**_coerce_arguments(client, str(tool["operation"]), arguments))

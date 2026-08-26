@@ -104,7 +104,7 @@ def test_list_compartments_requires_a_root_ocid() -> None:
 
 def test_discovery_and_invocation_tools_delegate_to_registry(monkeypatch) -> None:
     skills = mcp_module.list_dbo_skills()["skills"]
-    assert len(skills) == 34
+    assert len(skills) == 35
     assert {"name", "description", "toolCount"}.issubset(skills[0])
 
     listed = mcp_module.list_dbo_tools(["database-inventory"], limit=1)

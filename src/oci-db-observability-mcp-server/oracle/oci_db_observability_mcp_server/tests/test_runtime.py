@@ -6,6 +6,7 @@ https://oss.oracle.com/licenses/upl.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -245,3 +246,133 @@ def test_registered_tool_coerces_arguments_serializes_and_wraps_oci_errors(monke
     monkeypatch.setattr(runtime, "_client", lambda *_args: FailingClient())
     with pytest.raises(RuntimeError, match="OCI operation example_tool failed: SDK failure"):
         runtime.invoke_registered_tool(tool, {"value": "ok"})
+
+
+def test_metric_catalog_tools_are_local_and_validate_arguments(monkeypatch) -> None:
+    from oracle.oci_db_observability_mcp_server.registry import load_registry
+
+    monkeypatch.setattr(runtime, "_client", lambda *_args: pytest.fail("metadata tools must not create an OCI client"))
+    registry = load_registry()
+
+    result = runtime.invoke_registered_tool(
+        registry.get_tool("search_database_and_infra_observability_metrics"),
+        {"keywords": "apply lag", "namespace": "oracle_oci_database"},
+    )
+
+    assert result["catalogId"] == "database-and-infra-observability-metrics"
+    assert any(item["record"]["name"] == "ApplyLag" for item in result["items"])
+    assert json.loads(json.dumps(result)) == result
+    with pytest.raises(ValueError, match="Invalid arguments"):
+        runtime.invoke_registered_tool(registry.get_tool("get_database_and_infra_observability_metrics"), {"keys": []})
+
+
+def test_metric_read_builds_one_monitoring_request_from_catalog(monkeypatch) -> None:
+    from oracle.oci_db_observability_mcp_server.registry import load_registry
+
+    captured: dict[str, object] = {}
+
+    class Details:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class Client:
+        def summarize_metrics_data(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(data=[{"stream": 1}, {"stream": 2}], headers={})
+
+    monkeypatch.setattr(runtime, "_client", lambda *_args: Client())
+    monkeypatch.setattr(
+        runtime,
+        "identity_bootstrap_client",
+        lambda: SimpleNamespace(get_compartment=lambda **_kwargs: None),
+    )
+    monkeypatch.setattr(runtime.oci.monitoring, "models", SimpleNamespace(SummarizeMetricsDataDetails=Details))
+    tool = load_registry().get_tool("read_database_and_infra_observability_metrics")
+
+    result = runtime.invoke_registered_tool(
+        tool,
+        {
+            "compartment_id": "ocid1.compartment.oc1..example",
+            "namespace": "oracle_oci_database",
+            "metric_name": "ApplyLag",
+            "dimension_filters": {"dbRole": "PHYSICAL_STANDBY"},
+            "group_by": "primaryDbid",
+            "aggregation": "mean",
+            "interval": "5m",
+            "resolution": "1m",
+            "start_time": "2026-08-01T00:00:00Z",
+            "end_time": "2026-08-01T01:00:00Z",
+            "max_results": 1,
+        },
+    )
+
+    assert captured["compartment_id"] == "ocid1.compartment.oc1..example"
+    assert captured["summarize_metrics_data_details"].kwargs["query"] == 'ApplyLag[5m]{dbRole = "PHYSICAL_STANDBY"}.groupBy(primaryDbid).mean()'
+    assert result["data"] == [{"stream": 1}]
+    assert result["mql"] == 'ApplyLag[5m]{dbRole = "PHYSICAL_STANDBY"}.groupBy(primaryDbid).mean()'
+
+
+@pytest.mark.parametrize(
+    "arguments, error",
+    [
+        ({"dimension_filters": {"notCataloged": "value"}}, "Unsupported dimensions"),
+        ({"start_time": "2026-08-01T01:00:00Z", "end_time": "2026-08-01T00:00:00Z"}, "start_time must be earlier"),
+    ],
+)
+def test_metric_read_rejects_invalid_catalog_or_time_before_client_creation(monkeypatch, arguments, error) -> None:
+    from oracle.oci_db_observability_mcp_server.registry import load_registry
+
+    base_arguments = {
+        "compartment_id": "ocid1.compartment.oc1..example",
+        "namespace": "oracle_oci_database",
+        "metric_name": "ApplyLag",
+        "aggregation": "mean",
+        "interval": "5m",
+        "resolution": "1m",
+        "start_time": "2026-08-01T00:00:00Z",
+        "end_time": "2026-08-01T01:00:00Z",
+    }
+    base_arguments.update(arguments)
+    monkeypatch.setattr(runtime, "_client", lambda *_args: pytest.fail("invalid metric read must not create an OCI client"))
+    monkeypatch.setattr(
+        runtime,
+        "identity_bootstrap_client",
+        lambda: SimpleNamespace(get_compartment=lambda **_kwargs: None),
+    )
+
+    with pytest.raises(ValueError, match=error):
+        runtime.invoke_registered_tool(load_registry().get_tool("read_database_and_infra_observability_metrics"), base_arguments)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "operation"),
+    [
+        ("list_database_and_infra_observability_alarms", {"compartment_id": "ocid1.compartment.oc1..example", "limit": 10}, "list_alarms"),
+        ("get_database_and_infra_observability_alarm", {"alarm_id": "ocid1.alarm.oc1..example"}, "get_alarm"),
+        ("list_database_and_infra_observability_alarm_states", {"compartment_id": "ocid1.compartment.oc1..example", "status": "FIRING"}, "list_alarms_status"),
+    ],
+)
+def test_alarm_tools_each_make_one_pinned_sdk_operation(monkeypatch, tool_name, arguments, operation) -> None:
+    from oracle.oci_db_observability_mcp_server.registry import load_registry
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class Client:
+        def __getattr__(self, name):
+            def invoke(**kwargs):
+                calls.append((name, kwargs))
+                return SimpleNamespace(data={"operation": name}, headers={})
+
+            return invoke
+
+    monkeypatch.setattr(runtime, "_client", lambda *_args: Client())
+    monkeypatch.setattr(
+        runtime,
+        "identity_bootstrap_client",
+        lambda: SimpleNamespace(get_compartment=lambda **_kwargs: None),
+    )
+
+    result = runtime.invoke_registered_tool(load_registry().get_tool(tool_name), arguments)
+
+    assert calls == [(operation, arguments)]
+    assert result == {"data": {"operation": operation}, "nextPage": None}
