@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+import oci
 
 from oracle.oci_db_observability_mcp_server import __project__, __version__
 from oracle.oci_db_observability_mcp_server import runtime
@@ -84,7 +85,7 @@ def test_http_access_token_requires_initialized_policy(monkeypatch) -> None:
         runtime._get_config_and_signer(SimpleNamespace(token="caller-token"))
 
 
-def test_identity_bootstrap_uses_http_context_and_tenancy_override(monkeypatch) -> None:
+def test_identity_bootstrap_uses_http_context(monkeypatch) -> None:
     signer = object()
     monkeypatch.setattr(
         runtime,
@@ -92,27 +93,12 @@ def test_identity_bootstrap_uses_http_context_and_tenancy_override(monkeypatch) 
         SimpleNamespace(context_for=lambda token: SimpleNamespace(config={"region": "us-ashburn-1"}, signer=signer)),
     )
     monkeypatch.setattr(runtime, "get_access_token", lambda: SimpleNamespace(token="caller-token"))
-    monkeypatch.setenv("OCI_MCP_TENANCY_ID_OVERRIDE", "ocid1.tenancy.oc1..example")
     monkeypatch.setattr(runtime, "client_class", lambda _service, _client: FakeClient)
 
-    client, tenancy_id = runtime.identity_bootstrap_client()
+    client = runtime.identity_bootstrap_client()
 
     assert isinstance(client, FakeClient)
     assert client.signer is signer
-    assert tenancy_id == "ocid1.tenancy.oc1..example"
-
-
-def test_identity_bootstrap_requires_tenancy(monkeypatch) -> None:
-    monkeypatch.setattr(runtime, "get_access_token", lambda: None)
-    monkeypatch.setattr(
-        runtime,
-        "build_auth_context",
-        lambda: SimpleNamespace(config={}, signer=object(), tenancy_id=None),
-    )
-    monkeypatch.delenv("OCI_MCP_TENANCY_ID_OVERRIDE", raising=False)
-
-    with pytest.raises(ValueError, match="missing tenancy"):
-        runtime.identity_bootstrap_client()
 
 
 def test_invoke_validates_before_creating_sdk_client(monkeypatch) -> None:
@@ -130,8 +116,33 @@ def test_invoke_validates_before_creating_sdk_client(monkeypatch) -> None:
     }
     monkeypatch.setattr(runtime, "_client", lambda *_args: pytest.fail("client must not be created"))
 
-    with pytest.raises(ValueError, match="compartment_id"):
+    with pytest.raises(ValueError, match="example_tool requires compartment_id"):
         runtime.invoke_registered_tool(tool, {})
+
+
+def test_invoke_rejects_an_inaccessible_compartment_before_creating_service_client(monkeypatch) -> None:
+    tool = {
+        "name": "example_tool",
+        "service": "opsi",
+        "client": "OperationsInsightsClient",
+        "operation": "get_example",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"compartment_id": {"type": "string"}},
+            "required": ["compartment_id"],
+            "additionalProperties": False,
+        },
+    }
+
+    class IdentityClient:
+        def get_compartment(self, **_kwargs):
+            raise oci.exceptions.ServiceError(404, "NotAuthorizedOrNotFound", {}, "not found")
+
+    monkeypatch.setattr(runtime, "identity_bootstrap_client", IdentityClient)
+    monkeypatch.setattr(runtime, "_client", lambda *_args: pytest.fail("service client must not be created"))
+
+    with pytest.raises(ValueError, match="invalid or inaccessible"):
+        runtime.invoke_registered_tool(tool, {"compartment_id": "ocid1.compartment.oc1..unknown"})
 
 
 @pytest.mark.parametrize(

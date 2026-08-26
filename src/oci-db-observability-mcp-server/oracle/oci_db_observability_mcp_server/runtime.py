@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import os
 from functools import lru_cache
 from typing import Any, Mapping, get_args, get_origin
 
@@ -19,7 +18,7 @@ from fastmcp.server.dependencies import get_access_token
 from oracle_mcp_common import IDCSHttpAuth, build_auth_context
 
 from . import __project__, __version__
-from .registry import client_class
+from .registry import client_class, compartment_requirements
 from .sdk_schema import parameter_docs
 
 _USER_AGENT = f"{__project__.split('oracle.', 1)[1].removesuffix('-server')}/{__version__}"
@@ -32,26 +31,25 @@ def configure_http_auth(policy: IDCSHttpAuth) -> None:
     _http_auth = policy
 
 
-def _get_http_config_and_signer(access_token: Any) -> tuple[dict[str, Any], Any, str | None]:
+def _get_http_config_and_signer(access_token: Any) -> tuple[dict[str, Any], Any]:
     """Build caller-specific OCI SDK authentication for one HTTP request."""
     if _http_auth is None:
         raise RuntimeError("HTTP authentication policy has not been initialized.")
     context = _http_auth.context_for(access_token.token if access_token else None)
-    tenancy_id = getattr(context.signer, "tenancy_id", None) or os.getenv("OCI_MCP_TENANCY_ID_OVERRIDE")
-    return ({**context.config, "additional_user_agent": _USER_AGENT}, context.signer, tenancy_id)
+    return ({**context.config, "additional_user_agent": _USER_AGENT}, context.signer)
 
 
-def _get_config_and_signer(access_token: Any | None = None) -> tuple[dict[str, Any], Any, str | None]:
+def _get_config_and_signer(access_token: Any | None = None) -> tuple[dict[str, Any], Any]:
     """Resolve HTTP caller credentials or configured stdio OCI credentials."""
     if access_token is not None:
         return _get_http_config_and_signer(access_token)
     context = build_auth_context()
-    return ({**context.config, "additional_user_agent": _USER_AGENT}, context.signer, context.tenancy_id)
+    return ({**context.config, "additional_user_agent": _USER_AGENT}, context.signer)
 
 
 @lru_cache(maxsize=None)
 def _stdio_client(service: str, client_name: str) -> Any:
-    config, signer, _ = _get_config_and_signer()
+    config, signer = _get_config_and_signer()
     return client_class(service, client_name)(config, signer=signer)
 
 
@@ -59,17 +57,15 @@ def _client(service: str, client_name: str) -> Any:
     access_token = get_access_token()
     if access_token is None:
         return _stdio_client(service, client_name)
-    config, signer, _ = _get_config_and_signer(access_token)
+    config, signer = _get_config_and_signer(access_token)
     return client_class(service, client_name)(config, signer=signer)
 
 
-def identity_bootstrap_client() -> tuple[Any, str]:
-    """Create the Identity client and resolve the configured tenancy scope."""
-    config, signer, tenancy_id = _get_config_and_signer(get_access_token())
-    if not tenancy_id:
-        raise ValueError("Configured OCI authentication context is missing tenancy.")
+def identity_bootstrap_client() -> Any:
+    """Create the Identity client for explicit compartment lookups."""
+    config, signer = _get_config_and_signer(get_access_token())
     client = client_class("identity", "IdentityClient")(config, signer=signer)
-    return client, tenancy_id
+    return client
 
 
 def _serialize_data(data: Any) -> Any:
@@ -141,12 +137,45 @@ def _coerce_arguments(client: Any, operation: str, arguments: Mapping[str, Any])
     return coerced
 
 
+def _require_compartment_scope(tool: Mapping[str, Any], arguments: Mapping[str, Any]) -> None:
+    """Give actionable guidance when a required catalog scope is missing."""
+    for requirement in compartment_requirements(tool):
+        argument = requirement["argument"]
+        if requirement["required"] and not arguments.get(argument):
+            raise ValueError(
+                f"{tool['name']} requires {argument}. Ask the user for a compartment OCID, or for a "
+                "root_compartment_id to resolve a supplied compartment name. Do not invent an OCID."
+            )
+
+
+def _validate_compartment_scope(tool: Mapping[str, Any], arguments: Mapping[str, Any]) -> None:
+    """Reject invalid or inaccessible catalog compartment scopes before dispatch."""
+    requirements = compartment_requirements(tool)
+    values = {str(arguments[requirement["argument"]]) for requirement in requirements if arguments.get(requirement["argument"])}
+    if not values:
+        return
+    client = identity_bootstrap_client()
+    for compartment_id in values:
+        try:
+            client.get_compartment(compartment_id=compartment_id)
+        except oci.exceptions.ServiceError as exc:
+            if exc.code == "NotAuthorizedOrNotFound" or exc.status in {403, 404}:
+                raise ValueError(
+                    f"The supplied compartment OCID {compartment_id} is invalid or inaccessible to the configured "
+                    "OCI identity. Ask the user for a valid compartment OCID, or for a root_compartment_id to "
+                    "resolve a compartment name."
+                ) from exc
+            raise RuntimeError(f"Unable to validate compartment OCID {compartment_id}: {exc}") from exc
+
+
 def invoke_registered_tool(tool: Mapping[str, Any], arguments: dict[str, Any]) -> Any:
     if not isinstance(arguments, dict):
         raise ValueError("arguments must be a JSON object")
+    _require_compartment_scope(tool, arguments)
     errors = sorted(Draft202012Validator(dict(tool["inputSchema"])).iter_errors(arguments), key=lambda error: list(error.path))
     if errors:
         raise ValueError(f"Invalid arguments: {errors[0].message}")
+    _validate_compartment_scope(tool, arguments)
     client = _client(str(tool["service"]), str(tool["client"]))
     try:
         response = getattr(client, tool["operation"])(**_coerce_arguments(client, str(tool["operation"]), arguments))

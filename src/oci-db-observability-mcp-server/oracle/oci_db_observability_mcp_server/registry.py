@@ -31,6 +31,7 @@ _CLIENTS = {
     },
     "identity": {"IdentityClient": oci.identity.IdentityClient},
 }
+_COMPARTMENT_ARGUMENTS = ("compartment_id", "peer_database_compartment_id")
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,18 @@ def client_class(service: str, client: str) -> type[Any]:
         return _CLIENTS[service][client]
     except KeyError as exc:
         raise RegistryError(f"Unsupported SDK client binding: {service}/{client}") from exc
+
+
+def compartment_requirements(tool: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Return top-level OCI compartment arguments accepted by a catalog operation."""
+    schema = tool["inputSchema"]
+    properties = schema["properties"]
+    required = set(schema.get("required", ()))
+    return [
+        {"argument": name, "required": name in required}
+        for name in _COMPARTMENT_ARGUMENTS
+        if name in properties
+    ]
 
 
 def _read_json(name: str) -> dict[str, Any]:

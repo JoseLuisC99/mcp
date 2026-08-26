@@ -759,7 +759,7 @@
     },
     {
       "name": "get_cluster_cache_metric",
-      "description": "Returns cluster cache metric summaries so admins can assess RAC cache efficiency and interconnect behavior.",
+      "description": "Returns RAC global-cache and interconnect metric summaries. Call only for a confirmed RAC CDB or non-CDB target; do not call for PDB, Autonomous, or non-RAC databases. This tool does not return Cursor Cache Hit Percentage.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "get_cluster_cache_metric",
@@ -1054,7 +1054,7 @@
     },
     {
       "name": "get_database_fleet_health_metrics",
-      "description": "Returns fleet health metrics across databases so admins can compare usage and availability trends by baseline and target windows.",
+      "description": "Returns fleet health metrics across databases so admins can compare usage and availability trends by baseline and target windows. Use only a metric named in filter_by_metric_names; absence from that enum does not establish that the metric is unavailable through AWR tools.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "get_database_fleet_health_metrics",
@@ -3705,7 +3705,7 @@
     },
     {
       "name": "list_awr_dbs",
-      "description": "Returns AWR databases and snapshot coverage for a managed database.",
+      "description": "Returns DB Management AWR database IDs and snapshot coverage for one managed database. For managed-database AWR analysis, pass the returned awr_db_id with this same managed_database_id to the matching summarize_awr_db_* tool. The returned awr_db_id is not an Operations Insights AWR Hub OCID; never pass it, or managed_database_id, as awr_hub_id to an Operations Insights AWR tool.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "list_awr_dbs",
@@ -5056,7 +5056,7 @@
     },
     {
       "name": "list_database_insights",
-      "description": "Returns Operations Insights inventory for selected scope and filters so admins can verify insight coverage, status, and candidate databaseInsightId values.",
+      "description": "Returns Operations Insights inventory for selected scope and filters so admins can verify insight coverage, status, and candidate databaseInsightId values. It does not return DB Management AWR identifiers or an Operations Insights AWR Hub OCID; do not use it for managed-database AWR discovery.",
       "service": "opsi",
       "client": "OperationsInsightsClient",
       "operation": "list_database_insights",
@@ -7162,7 +7162,7 @@
     },
     {
       "name": "list_managed_databases",
-      "description": "Returns DB Management managed database inventory for a compartment so admins can discover targets and collect managedDatabaseId values.",
+      "description": "Returns the DB Management managed-database inventory for a compartment so callers can establish the target set and collect canonical managedDatabaseId values. Use this as the initial inventory for a workflow, follow pagination tokens, and reuse the returned IDs for downstream calls instead of rediscovering the same scope.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "list_managed_databases",
@@ -7601,7 +7601,7 @@
     },
     {
       "name": "list_operations_insights_warehouses",
-      "description": "Returns Ops Insights warehouse inventory so admins can review warehouse lifecycle status and platform coverage.",
+      "description": "Returns Ops Insights warehouse inventory so admins can review warehouse lifecycle status and platform coverage. This is not AWR Hub discovery and is not required for DB Management AWR analysis.",
       "service": "opsi",
       "client": "OperationsInsightsClient",
       "operation": "list_operations_insights_warehouses",
@@ -7664,7 +7664,7 @@
     },
     {
       "name": "list_opsi_configurations",
-      "description": "Returns OPSI configuration resources so admins can audit active configuration state across managed resources.",
+      "description": "Returns OPSI configuration resources so admins can audit active configuration state across managed resources. This does not provide DB Management AWR identifiers or AWR Hub discovery for managed-database analysis.",
       "service": "opsi",
       "client": "OperationsInsightsClient",
       "operation": "list_opsi_configurations",
@@ -7928,7 +7928,7 @@
     },
     {
       "name": "list_roles",
-      "description": "Returns roles granted to a specific user.",
+      "description": "Returns roles granted to a specific user. Use this as a dependent lookup for users returned by list_users; it is not a database or user-discovery tool. Reuse a successful result for the same user, database, and filter scope, and request another page only when a pagination token is present.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "list_roles",
@@ -8329,7 +8329,7 @@
     },
     {
       "name": "list_users",
-      "description": "Returns users for a managed database so you can identify user accounts for access review.",
+      "description": "Returns a user-inventory page for one managed database and filter scope so callers can identify accounts for access review or dependent privilege lookups. Preconditions: managed_database_id must come from the current list_managed_databases result. During one workflow, issue at most one call for each unique (managed_database_id, filters, page) tuple; do not repeat a successful request or invent or derive alternate database IDs. Follow pagination tokens to completion and retry only failed or transient requests.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "list_users",
@@ -9513,7 +9513,7 @@
     },
     {
       "name": "summarize_awr_database_metrics",
-      "description": "Returns sampled AWR metric series for the selected database, including metric name, sample timestamps, and observed values.",
+      "description": "Returns sampled AWR metric series for the selected database, including metric name, sample timestamps, and observed values. Requires a confirmed Operations Insights AWR Hub OCID and a source identifier from that same hub; metric names are source-dependent.",
       "service": "opsi",
       "client": "OperationsInsightsClient",
       "operation": "summarize_awr_database_metrics",
@@ -9529,11 +9529,11 @@
           },
           "awr_hub_id": {
             "type": "string",
-            "description": "Unique Awr Hub identifier"
+            "description": "The Operations Insights AWR Hub OCID. This is not a managed database OCID or a DB Management awr_db_id; invoke this tool only when the hub has been independently confirmed."
           },
           "awr_source_database_identifier": {
             "type": "string",
-            "description": "Internal AWR source database identifier for the database in the AWR Hub. This value is not an OCID; use the identifier returned by AWR Hub database listing results."
+            "description": "Internal AWR source database identifier in this Operations Insights AWR Hub. This is not an OCID; use the identifier returned by list_awr_databases for the same awr_hub_id."
           },
           "begin_snapshot_identifier_greater_than_or_equal_to": {
             "type": "integer",
@@ -9582,7 +9582,7 @@
           "time_less_than_or_equal_to": {
             "type": "string",
             "format": "date-time",
-            "description": "The optional less than or equal to query parameter to filter the timestamp. The timestamp format to be followed is: YYYY-MM-DDTHH:MM:SSZ, example 2020-12-03T19:00:53Z"
+            "description": "The optional less than or equal to query parameter to filter the timestamp. It must not be later than the current UTC time. The timestamp format is YYYY-MM-DDTHH:MM:SSZ, for example 2020-12-03T19:00:53Z."
           },
           "opc_request_id": {
             "type": "string"
@@ -9861,7 +9861,7 @@
     },
     {
       "name": "summarize_awr_database_sysstats",
-      "description": "Returns AWR sysstat samples for a database, including statistic names, sampled intervals, and measured values.",
+      "description": "Returns AWR sysstat samples for a database, including statistic names, sampled intervals, and measured values. Requires a confirmed Operations Insights AWR Hub OCID and a source identifier from that same hub. Statistic names are source-dependent; this tool returns counters, not a precomputed Cursor Cache Hit Percentage.",
       "service": "opsi",
       "client": "OperationsInsightsClient",
       "operation": "summarize_awr_database_sysstats",
@@ -9877,11 +9877,11 @@
           },
           "awr_hub_id": {
             "type": "string",
-            "description": "Unique Awr Hub identifier"
+            "description": "The Operations Insights AWR Hub OCID. This is not a managed database OCID or a DB Management awr_db_id; invoke this tool only when the hub has been independently confirmed."
           },
           "awr_source_database_identifier": {
             "type": "string",
-            "description": "Internal AWR source database identifier for the database in the AWR Hub. This value is not an OCID; use the identifier returned by AWR Hub database listing results."
+            "description": "Internal AWR source database identifier in this Operations Insights AWR Hub. This is not an OCID; use the identifier returned by list_awr_databases for the same awr_hub_id."
           },
           "begin_snapshot_identifier_greater_than_or_equal_to": {
             "type": "integer",
@@ -9930,7 +9930,7 @@
           "time_less_than_or_equal_to": {
             "type": "string",
             "format": "date-time",
-            "description": "The optional less than or equal to query parameter to filter the timestamp. The timestamp format to be followed is: YYYY-MM-DDTHH:MM:SSZ, example 2020-12-03T19:00:53Z"
+            "description": "The optional less than or equal to query parameter to filter the timestamp. It must not be later than the current UTC time. The timestamp format is YYYY-MM-DDTHH:MM:SSZ, for example 2020-12-03T19:00:53Z."
           },
           "opc_request_id": {
             "type": "string"
@@ -10705,7 +10705,7 @@
     },
     {
       "name": "summarize_awr_db_sysstats",
-      "description": "Returns AWR SYSSTAT summaries for one AWR database.",
+      "description": "Returns AWR SYSSTAT summaries for one DB Management AWR database. Use after list_awr_dbs with the returned awr_db_id and the same managed_database_id. For cursor-cache analysis, request the needed sysstat counters for a common completed interval; this tool returns counters, not a precomputed ratio.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "summarize_awr_db_sysstats",

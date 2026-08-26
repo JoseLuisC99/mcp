@@ -36,17 +36,16 @@ uvx oracle.oci-db-observability-mcp-server
 Register `${ORACLE_MCP_BASE_URL}/auth/callback` in the OCI IAM confidential
 application. If `IDCS_REQUIRED_SCOPES` is unset, the default scope is
 `oci_mcp.db_observability.invoke` together with the standard OpenID scopes.
-The server uses `oracle-mcp-common` 0.1.2 or later for OCI authentication. For
-HTTP token-exchange authentication, set `OCI_MCP_TENANCY_ID_OVERRIDE` when the
-caller signer does not expose a tenancy and `list_oci_compartments` is called
-without `root_compartment_id`.
+The server uses `oracle-mcp-common` 0.1.2 or later for OCI authentication.
 
 ## Discovery workflow
 
-1. If the user provides a compartment name instead of an OCID, call
-   `list_oci_compartments` with `name` set to that value. Use the returned
-   item's `id` as `compartment_id` in subsequent operations. If the user
-   provides an OCID, call `get_oci_compartment` to validate it when needed.
+1. For a compartment-scoped operation, use a user-provided compartment OCID.
+   For a name lookup, request a user-provided `root_compartment_id`, then call
+   `list_oci_compartments` with that root and `name`. Use the returned item's
+   `id` as `compartment_id` in subsequent operations. Do not invent an OCID.
+   If the user provides an OCID, call `get_oci_compartment` to validate it when
+   needed.
 2. Call `list_dbo_skills` when the relevant capability is not already known.
 3. Call `list_dbo_tools` for selected skills when the required operation is not
    already known.

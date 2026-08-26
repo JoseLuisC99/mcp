@@ -19,7 +19,7 @@
 
 ### Tool surface
 
-- Compartment scope discovery through `get_oci_compartment` and
+- Explicit-compartment scope discovery through `get_oci_compartment` and
   `list_oci_compartments`.
 - Catalog discovery and dispatch through `list_dbo_skills`, `list_dbo_tools`,
   `describe_dbo_tool`, and `invoke_dbo_tool`.

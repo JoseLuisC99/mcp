@@ -8,15 +8,16 @@ from __future__ import annotations
 from typing import Any
 from fastmcp import FastMCP
 from pydantic import Field
-from .registry import load_registry, to_jsonable
+from .registry import compartment_requirements, load_registry, to_jsonable
 from .runtime import invoke_registered_tool
 from .runtime import identity_bootstrap_client, serialize_response
 
 registry = load_registry()
 mcp = FastMCP(
     name="oracle.oci-db-observability-mcp-server",
-    instructions="Resolve an OCI compartment name to its OCID with `list_oci_compartments`, or validate an already known "
-                 "OCID with `get_oci_compartment`, when scope is not already known. Pass the resolved compartment OCID "
+    instructions="For a compartment-scoped operation, use a user-provided compartment OCID, or resolve a user-provided compartment name with "
+                 "`list_oci_compartments` using an explicit root compartment OCID. If neither is available, ask the user for a compartment OCID or "
+                 "root compartment OCID; do not invent an OCID. Validate an already known OCID with `get_oci_compartment` when scope is not already known. Pass the resolved compartment OCID "
                  "to subsequent Database Observability operations. "
                  "Use `list_dbo_skills` and `list_dbo_tools` when the relevant capability or operation is not already known. "
                  "Use `describe_dbo_tool` to inspect or confirm a tool's exact contract when its schema is unavailable, "
@@ -28,7 +29,8 @@ mcp = FastMCP(
     description=(
         "Read-only OCI compartment resolution. Use this when the compartment OCID is already known and you want to "
         "validate or inspect that exact compartment before invoking compartment-scoped Database Observability tools. "
-        "If the user provides a compartment name rather than an OCID, use `list_oci_compartments` first."
+        "Do not invent an OCID. If the user provides a compartment name rather than an OCID, request a root "
+        "compartment OCID and use `list_oci_compartments` first."
     ),
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 )
@@ -40,21 +42,22 @@ def get_oci_compartment(
 ) -> Any:
     if not compartment_id:
         raise ValueError("compartment_id is required.")
-    client, _ = identity_bootstrap_client()
+    client = identity_bootstrap_client()
     return serialize_response(client.get_compartment(compartment_id=compartment_id))
 
 @mcp.tool(
     description=(
         "Read-only OCI compartment name-to-OCID resolution. Use this when the user supplies a compartment name instead "
         "of an OCID. Set `name` to the requested name and use the returned item's `id` as "
-        "the `compartment_id` in subsequent Database Observability operations. Use `root_compartment_id` to narrow the "
-        "search; by default, search descendants from the authenticated tenancy. If multiple compartments share a name, "
+        "the `compartment_id` in subsequent Database Observability operations. Provide a user-supplied "
+        "`root_compartment_id` as the compartment OCID from which to search descendants; if it is unavailable, ask "
+        "the user rather than inventing one. If multiple compartments share a name, "
         "inspect their IDs and hierarchy before continuing."
     ),
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 def list_oci_compartments(
-    root_compartment_id: str | None = Field(None, description="Optional root compartment OCID that limits name resolution to this compartment and its descendants. Omit it to search from the authenticated tenancy."),
+    root_compartment_id: str = Field(..., description="Required root compartment OCID from which to search for matching compartments and descendants."),
     include_subtree: bool = Field(True, description="When true, include all descendant compartments below the root."),
     access_level: str = Field("ACCESSIBLE", description="Visibility filter: ACCESSIBLE returns compartments available to the caller; ANY includes all visible states."),
     name: str | None = Field(None, description="Optional exact compartment-name filter for resolving a user-provided name to one or more compartment OCIDs."),
@@ -62,9 +65,11 @@ def list_oci_compartments(
     limit: int = Field(50, ge=1, le=1000, description="Maximum number of compartments returned in this response."),
     page: str | None = Field(None, description="Optional nextPage token returned by a previous call."),
 ) -> dict[str, Any]:
-    client, tenancy_id = identity_bootstrap_client()
+    if not root_compartment_id:
+        raise ValueError("root_compartment_id is required.")
+    client = identity_bootstrap_client()
     response = client.list_compartments(
-        compartment_id=root_compartment_id or tenancy_id,
+        compartment_id=root_compartment_id,
         compartment_id_in_subtree=include_subtree,
         access_level=access_level,
         name=name,
@@ -108,6 +113,7 @@ def list_dbo_tools(
                 "description": tool["description"],
                 "skills": list(tool["skills"]),
                 "mutable": tool["mutable"],
+                "compartmentRequirements": compartment_requirements(tool),
             }
             for tool in tools[:limit]
         ],
@@ -129,13 +135,16 @@ def describe_dbo_tool(
         "description": tool["description"],
         "inputSchema": to_jsonable(tool["inputSchema"]),
         "mutable": tool["mutable"],
+        "compartmentRequirements": compartment_requirements(tool),
         "guidance": "Pass an arguments object that exactly matches inputSchema.",
     }
 
 @mcp.tool(
     description="Invoke one registered Oracle Database Observability operation. The supplied arguments object must "
-                "conform exactly to the selected tool's known `inputSchema`; use `describe_dbo_tool` first when that "
-                "schema is unavailable, outdated, or uncertain. This is the sole endpoint that executes catalog "
+                "conform exactly to the selected tool's known `inputSchema`. For an operation with compartment "
+                "requirements, provide a real compartment OCID or resolve a user-provided name from a user-provided "
+                "root compartment OCID; do not invent an OCID. Use `describe_dbo_tool` first when that schema is "
+                "unavailable, outdated, or uncertain. This is the sole endpoint that executes catalog "
                 "operations."
 )
 def invoke_dbo_tool(

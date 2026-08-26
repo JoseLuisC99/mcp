@@ -48,7 +48,7 @@ def test_compartment_tools_use_the_shared_bootstrap_client(monkeypatch) -> None:
             calls["list"] = kwargs
             return object()
 
-    monkeypatch.setattr(mcp_module, "identity_bootstrap_client", lambda: (Client(), "tenancy-ocid"))
+    monkeypatch.setattr(mcp_module, "identity_bootstrap_client", Client)
     monkeypatch.setattr(
         mcp_module,
         "serialize_response",
@@ -61,7 +61,7 @@ def test_compartment_tools_use_the_shared_bootstrap_client(monkeypatch) -> None:
     }
     assert calls["get"] == {"compartment_id": "compartment-ocid"}
     assert mcp_module.list_oci_compartments(
-        root_compartment_id=None,
+        root_compartment_id="root-compartment-ocid",
         include_subtree=True,
         access_level="ACCESSIBLE",
         name="production",
@@ -74,7 +74,7 @@ def test_compartment_tools_use_the_shared_bootstrap_client(monkeypatch) -> None:
         "nextPage": "page-2",
     }
     assert calls["list"] == {
-        "compartment_id": "tenancy-ocid",
+        "compartment_id": "root-compartment-ocid",
         "compartment_id_in_subtree": True,
         "access_level": "ACCESSIBLE",
         "name": "production",
@@ -89,6 +89,19 @@ def test_get_compartment_requires_an_ocid() -> None:
         mcp_module.get_oci_compartment("")
 
 
+def test_list_compartments_requires_a_root_ocid() -> None:
+    with pytest.raises(ValueError, match="root_compartment_id is required"):
+        mcp_module.list_oci_compartments(
+            root_compartment_id="",
+            include_subtree=True,
+            access_level="ACCESSIBLE",
+            name=None,
+            lifecycle_state=None,
+            limit=50,
+            page=None,
+        )
+
+
 def test_discovery_and_invocation_tools_delegate_to_registry(monkeypatch) -> None:
     skills = mcp_module.list_dbo_skills()["skills"]
     assert len(skills) == 34
@@ -99,10 +112,12 @@ def test_discovery_and_invocation_tools_delegate_to_registry(monkeypatch) -> Non
     assert len(listed["tools"]) == 1
     assert listed["truncated"] is (listed["count"] > 1)
     assert "database-inventory" in listed["tools"][0]["skills"]
+    assert "compartmentRequirements" in listed["tools"][0]
 
     described = mcp_module.describe_dbo_tool("list_database_insights")
     assert described["name"] == "list_database_insights"
     assert described["inputSchema"]["type"] == "object"
+    assert described["compartmentRequirements"] == [{"argument": "compartment_id", "required": False}]
 
     expected = {"result": "ok"}
     monkeypatch.setattr(mcp_module, "invoke_registered_tool", lambda tool, arguments: (tool["name"], arguments, expected))

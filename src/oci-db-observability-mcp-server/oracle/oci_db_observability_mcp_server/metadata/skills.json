@@ -19,7 +19,7 @@
     },
     {
       "name": "awr-discovery-primitives",
-      "description": "Discovery primitives for AWR databases and snapshot inventories.",
+      "description": "DB Management discovery primitives for AWR database IDs and snapshot inventories. For managed-database AWR analysis, use list_managed_databases, then list_awr_dbs, then the matching DB Management AWR analysis tool. Do not use Operations Insights warehouse, configuration, or database-insight tools for this workflow. These tools do not discover an Operations Insights AWR Hub OCID; do not reuse their managed database IDs or awr_db_id values as awr_hub_id.",
       "tools": [
         "list_awr_db_snapshots",
         "list_awr_dbs"
@@ -153,7 +153,7 @@
     },
     {
       "name": "database-health-and-core-metrics",
-      "description": "Read-only health and core runtime metric checks for managed databases in OCI DBM.",
+      "description": "Read-only health and core runtime metric checks for managed databases in OCI DBM. Check target type and subtype from inventory before invoking a specialized tool such as get_cluster_cache_metric.",
       "tools": [
         "get_cluster_cache_metric",
         "get_database_home_metrics",
@@ -163,7 +163,7 @@
     },
     {
       "name": "database-inventory",
-      "description": "Discover managed databases and database insight resources, then retrieve details for verified targets.",
+      "description": "Discover managed databases and Operations Insights database-insight resources, then retrieve details for verified targets. Database Insight inventory does not provide DB Management AWR identifiers or an Operations Insights AWR Hub OCID; do not use it for managed-database AWR discovery.",
       "tools": [
         "get_database_insight",
         "get_managed_database",
@@ -174,7 +174,7 @@
     },
     {
       "name": "database-performance-analysis",
-      "description": "Use this skill for workload regression and bottleneck diagnosis using AWR evidence, wait analysis, CPU profiles, metric trends, and SQL/plan context.",
+      "description": "Use this skill for workload regression and bottleneck diagnosis using AWR evidence, wait analysis, CPU profiles, metric trends, and SQL/plan context. When starting from a managed database OCID, prefer the DB Management AWR route: list_managed_databases, list_awr_dbs, then the matching summarize_awr_db_* tool. Use Operations Insights AWR tools only when an Operations Insights AWR Hub OCID is independently known; its source identifier must come from list_awr_databases for that same hub.",
       "tools": [
         "get_awr_database_report",
         "get_awr_database_sql_report",
@@ -292,7 +292,7 @@
     },
     {
       "name": "fleet-health-analytics-across-many-databases",
-      "description": "Fleet-level health analytics across many managed databases in OCI Database Management.",
+      "description": "Fleet-level health analytics across many managed databases in OCI Database Management. Use get_database_fleet_health_metrics only when its filter_by_metric_names enum contains the requested metric; otherwise assess the applicable AWR workflow without treating the fleet enum as a global capability list.",
       "tools": [
         "get_database_fleet_health_metrics"
       ]
@@ -381,7 +381,7 @@
     },
     {
       "name": "operations-insights-warehouse-admin",
-      "description": "Tools related to operations-insights-warehouse-admin functionality.",
+      "description": "Read-only Operations Insights warehouse administration and capacity tools. These tools do not discover AWR Hubs and are not required for DB Management AWR analysis.",
       "tools": [
         "get_operations_insights_warehouse",
         "get_operations_insights_warehouse_user",
@@ -392,7 +392,7 @@
     },
     {
       "name": "opsi-configurations-and-datastores",
-      "description": "Read-only Operations Insights configuration inventory and detail inspection.",
+      "description": "Read-only Operations Insights configuration inventory and detail inspection. These tools do not provide DB Management AWR identifiers or AWR Hub discovery for managed-database analysis.",
       "tools": [
         "get_opsi_configuration",
         "list_opsi_configurations"
@@ -420,7 +420,7 @@
     },
     {
       "name": "users-and-privileges-rbac-audit",
-      "description": "Database users, roles, and privilege audit surfaces including proxy and data access container visibility.",
+      "description": "Database users, roles, and privilege audit surfaces including proxy and data access container visibility. For fleet workflows, call list_managed_databases once per compartment and filter scope and treat its returned IDs as the authoritative target set. Call each downstream inventory tool at most once per unique target and parameter set; do not call downstream tools with IDs that were not returned by the inventory call. Reuse completed results, follow pagination tokens to completion, and retry only failed or transient requests or explicitly requested new pages.",
       "tools": [
         "get_user",
         "list_consumer_group_privileges",
