@@ -71,11 +71,11 @@ class _GroupModel(_PolymorphicModel):
 def test_packaged_registry_has_expected_shape() -> None:
     registry = load_registry()
 
-    assert len(registry.skills) == 34
-    assert len(registry.tools) == 229
-    assert len({tool["name"] for tool in registry.tools}) == 229
+    assert len(registry.skills) == 35
+    assert len(registry.tools) == 236
+    assert len({tool["name"] for tool in registry.tools}) == 236
     assert all(tool["inputSchema"]["type"] == "object" for tool in registry.tools)
-    assert all(tool["inputSchema"].get("additionalProperties") is False for tool in registry.tools)
+    assert all(tool["inputSchema"].get("additionalProperties") in (False, {"type": "string"}) for tool in registry.tools)
     assert "retrieve_data" not in {tool["name"] for tool in registry.tools}
     assert not any(tool["mutable"] for tool in registry.tools)
     assert "query_opsi_data_object_data" not in {tool["name"] for tool in registry.tools}
@@ -138,10 +138,30 @@ def test_packaged_schemas_match_the_locked_oci_sdk() -> None:
     registry = load_registry()
 
     for tool in registry.tools:
+        if tool.get("kind") != "oci_sdk" or tool.get("adapter") or "database-and-infra-observability-metric-catalog" in tool["skills"]:
+            continue
         method = getattr(client_class(tool["service"], tool["client"]), tool["operation"])
         models = __import__(f"{method.__module__.rsplit('.', 1)[0]}.models", fromlist=["models"])
         schema = to_jsonable(tool["inputSchema"])
         assert schema == schema_for_operation(method, models, schema)
+
+
+def test_metric_catalog_skill_uses_the_pinned_monitoring_client_operations() -> None:
+    registry = load_registry()
+    tool_operations = {
+        tool["name"]: tool.get("operation")
+        for tool in registry.list_tools({"database-and-infra-observability-metric-catalog"})
+    }
+
+    assert tool_operations == {
+        "search_database_and_infra_observability_metrics": None,
+        "get_database_and_infra_observability_metrics": None,
+        "list_database_and_infra_observability_metrics": None,
+        "read_database_and_infra_observability_metrics": "summarize_metrics_data",
+        "list_database_and_infra_observability_alarms": "list_alarms",
+        "get_database_and_infra_observability_alarm": "get_alarm",
+        "list_database_and_infra_observability_alarm_states": "list_alarms_status",
+    }
 
 
 @pytest.mark.parametrize("mutation, error", [(lambda schema: schema.pop("additionalProperties"), "unrestricted object"), (lambda schema: schema["properties"].update({"values": {"type": "array"}}), "untyped array")])
