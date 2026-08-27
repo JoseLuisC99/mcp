@@ -1216,7 +1216,7 @@
     },
     {
       "name": "get_database_home_metrics",
-      "description": "Returns database home activity and resource usage summaries so admins can evaluate database home health and load.",
+      "description": "Returns the fixed database-home activity and resource-usage summary for one managed database over a supported time interval. This is not a general metric-discovery operation and has no metric-name filter; use it only when the requested value is represented in this tool's documented response.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "get_database_home_metrics",
@@ -1228,7 +1228,7 @@
         "properties": {
           "end_time": {
             "type": "string",
-            "description": "The end time of the time range to retrieve the health metrics of a Managed Database\nin UTC in ISO-8601 format, which is \"yyyy-MM-dd'T'hh:mm:ss.sss'Z'\"."
+            "description": "End of the query interval in UTC ISO-8601 format (yyyy-MM-dd'T'HH:mm:ss.sss'Z'). It must be earlier than the current UTC time and no more than one week after start_time."
           },
           "managed_database_id": {
             "type": "string",
@@ -1236,7 +1236,7 @@
           },
           "start_time": {
             "type": "string",
-            "description": "The start time of the time range to retrieve the health metrics of a Managed Database\nin UTC in ISO-8601 format, which is \"yyyy-MM-dd'T'hh:mm:ss.sss'Z'\"."
+            "description": "Start of the query interval in UTC ISO-8601 format (yyyy-MM-dd'T'HH:mm:ss.sss'Z'). The interval must be no longer than one week; calculate the start from the chosen end time rather than using an older calendar range."
           },
           "opc_request_id": {
             "type": "string"
@@ -2282,7 +2282,7 @@
     },
     {
       "name": "get_pdb_metrics",
-      "description": "Returns PDB resource usage summaries so admins can compare DB time, CPU, wait, storage, and memory usage across PDBs.",
+      "description": "Returns resource-usage summaries for a managed PDB. Use only for a confirmed PDB target; validate the requested metric against filter_by_metric_names before calling, and do not fan out an unsupported metric across databases. Omit the filter to retrieve all metrics supported by this operation.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "get_pdb_metrics",
@@ -2311,7 +2311,21 @@
           },
           "filter_by_metric_names": {
             "type": "string",
-            "description": "The filter used to retrieve a specific set of metrics by passing the desired metric names with a comma separator. Note that, by default, the service returns all supported metrics."
+            "enum": [
+              "CPUTime",
+              "DBTime",
+              "CpuCount",
+              "IOPS",
+              "IOThroughput",
+              "MemoryUsage",
+              "StorageAllocated",
+              "StorageUsed",
+              "MonitoringStatus",
+              "WaitTime",
+              "CpuUtilization",
+              "StorageUtilization"
+            ],
+            "description": "Optional metric filter. Use only values listed in this enum; do not invent or infer metric names. Omit this parameter to return all metrics supported by this operation."
           },
           "managed_database_id": {
             "type": "string",
@@ -6862,7 +6876,7 @@
     },
     {
       "name": "list_job_executions",
-      "description": "Lists job executions so you can review per-target execution outcomes and timing.",
+      "description": "Lists individual job executions and their statuses for detailed investigation. Use this when per-job records, execution outcomes, or timing are required, after or instead of an aggregate status summary.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "list_job_executions",
@@ -9861,7 +9875,7 @@
     },
     {
       "name": "summarize_awr_database_sysstats",
-      "description": "Returns AWR sysstat samples for a database, including statistic names, sampled intervals, and measured values. Requires a confirmed Operations Insights AWR Hub OCID and a source identifier from that same hub. Statistic names are source-dependent; this tool returns counters, not a precomputed Cursor Cache Hit Percentage.",
+      "description": "Returns historical AWR statistic counters for a database, including statistic names, sampled intervals, and measured values. Requires a confirmed Operations Insights AWR Hub OCID and a source identifier from that same hub. Statistic names are source-dependent; request only confirmed statistics and derive rates or percentages only when the required counters, interval, and formula are known. This tool returns counters, not precomputed ratios.",
       "service": "opsi",
       "client": "OperationsInsightsClient",
       "operation": "summarize_awr_database_sysstats",
@@ -10705,7 +10719,7 @@
     },
     {
       "name": "summarize_awr_db_sysstats",
-      "description": "Returns AWR SYSSTAT summaries for one DB Management AWR database. Use after list_awr_dbs with the returned awr_db_id and the same managed_database_id. For cursor-cache analysis, request the needed sysstat counters for a common completed interval; this tool returns counters, not a precomputed ratio.",
+      "description": "Returns historical database statistic counters for one DB Management AWR database, not arbitrary named metrics or precomputed ratios. Use after list_awr_dbs with the returned awr_db_id and the same managed_database_id. Request only documented or confirmed statistics and use a common completed interval when deriving a rate or percentage. If required counters are unavailable, report the limitation and do not fan out across the fleet.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "summarize_awr_db_sysstats",
@@ -15460,7 +15474,7 @@
     },
     {
       "name": "summarize_job_executions_statuses",
-      "description": "Returns aggregated counts of job executions by status for the requested scope and time range.",
+      "description": "Returns aggregated counts of job executions by backend status for the requested scope and time range. Use this for job-status count questions; do not route these questions to fleet resource-metric tools. The API requires at least one of managed_database_id, managed_database_group_id, or job_id. The requested interval must be no longer than one week and end_time must be earlier than the current UTC time. Report returned status names as-is; do not equate user terms such as broken with a backend status unless confirmed by the response.",
       "service": "dbm",
       "client": "DbManagementClient",
       "operation": "summarize_job_executions_statuses",
@@ -15476,19 +15490,23 @@
           },
           "end_time": {
             "type": "string",
-            "description": "The end time of the time range to retrieve the status summary of job executions\nin UTC in ISO-8601 format, which is \"yyyy-MM-dd'T'hh:mm:ss.sss'Z'\"."
+            "description": "The end of the status-summary interval in UTC ISO-8601 format (yyyy-MM-dd'T'HH:mm:ss.sss'Z'). It must be earlier than the current UTC time and no more than one week after start_time."
           },
           "id": {
             "type": "string",
             "description": "The identifier of the resource."
           },
+          "job_id": {
+            "type": "string",
+            "description": "Optional identifier of the job. At least one of managed_database_id, managed_database_group_id, or job_id is required by the API."
+          },
           "managed_database_group_id": {
             "type": "string",
-            "description": "The OCID of the Managed Database Group."
+            "description": "Optional OCID of the Managed Database Group. At least one of managed_database_id, managed_database_group_id, or job_id is required by the API."
           },
           "managed_database_id": {
             "type": "string",
-            "description": "The OCID of the Managed Database."
+            "description": "Optional OCID of the Managed Database. At least one of managed_database_id, managed_database_group_id, or job_id is required by the API."
           },
           "name": {
             "type": "string",
@@ -15512,7 +15530,7 @@
           },
           "start_time": {
             "type": "string",
-            "description": "The start time of the time range to retrieve the status summary of job executions\nin UTC in ISO-8601 format, which is \"yyyy-MM-dd'T'hh:mm:ss.sss'Z'\"."
+            "description": "The start of the status-summary interval in UTC ISO-8601 format (yyyy-MM-dd'T'HH:mm:ss.sss'Z'). The interval may be at most one week long."
           },
           "opc_request_id": {
             "type": "string"
