@@ -24,6 +24,7 @@ class RegistryError(ValueError):
 
 _CLIENTS = {
     "opsi": {"OperationsInsightsClient": oci.opsi.OperationsInsightsClient},
+    "monitoring": {"MonitoringClient": oci.monitoring.MonitoringClient},
     "dbm": {
         "DbManagementClient": oci.database_management.DbManagementClient,
         "DiagnosabilityClient": oci.database_management.DiagnosabilityClient,
@@ -32,6 +33,16 @@ _CLIENTS = {
     "identity": {"IdentityClient": oci.identity.IdentityClient},
 }
 _COMPARTMENT_ARGUMENTS = ("compartment_id", "peer_database_compartment_id")
+
+_METADATA_HANDLERS = frozenset(
+    {
+        "metric_catalog.search",
+        "metric_catalog.get",
+        "metric_catalog.list",
+    }
+)
+
+_OCI_SDK_ADAPTERS = frozenset({"monitoring.metric_read"})
 
 
 @dataclass(frozen=True)
@@ -168,10 +179,19 @@ def _validate(skills: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Regi
             raise RegistryError(f"Tool has invalid skill membership: {tool.get('name')}")
         if tool["name"] not in {name for skill in skills if skill["name"] in tool["skills"] for name in skill["tools"]}:
             raise RegistryError(f"Tool/skill membership mismatch: {tool['name']}")
-        cls = client_class(tool.get("service"), tool.get("client"))
-        method = getattr(cls, tool.get("operation", ""), None)
-        if not callable(method) or tool["operation"].startswith("_"):
-            raise RegistryError(f"Tool has invalid SDK operation binding: {tool['name']}")
+        kind = tool.get("kind", "oci_sdk")
+        if kind == "metadata":
+            if tool.get("handler") not in _METADATA_HANDLERS:
+                raise RegistryError(f"Tool has invalid metadata handler: {tool['name']}")
+        elif kind == "oci_sdk":
+            cls = client_class(tool.get("service"), tool.get("client"))
+            method = getattr(cls, tool.get("operation", ""), None)
+            if not callable(method) or tool["operation"].startswith("_"):
+                raise RegistryError(f"Tool has invalid SDK operation binding: {tool['name']}")
+            if tool.get("adapter") is not None and tool.get("adapter") not in _OCI_SDK_ADAPTERS:
+                raise RegistryError(f"Tool has invalid SDK adapter: {tool['name']}")
+        else:
+            raise RegistryError(f"Tool has invalid execution kind: {tool['name']}")
     frozen_skills = tuple(_freeze(skill) for skill in skills)
     frozen_tools = tuple(_freeze(tool) for tool in tools)
     return Registry(frozen_skills, frozen_tools, MappingProxyType(dict(zip(by_skill, frozen_skills))), MappingProxyType(dict(zip(by_tool, frozen_tools))))

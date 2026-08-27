@@ -16315,6 +16315,167 @@
         ]
       },
       "mutable": false
+    },
+    {
+      "name": "search_database_and_infra_observability_metrics",
+      "description": "Search Database and Infrastructure Observability metric definitions by keywords before retrieving live metric values.",
+      "kind": "metadata",
+      "handler": "metric_catalog.search",
+      "skills": ["database-and-infra-observability-metric-catalog"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keywords": {"type": "string", "description": "Keywords describing the metric to find."},
+          "namespace": {"type": "string", "description": "Optional exact OCI Monitoring namespace filter."},
+          "name": {"type": "string", "description": "Optional exact metric-name filter."},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum matching definitions to return."}
+        },
+        "required": ["keywords"],
+        "additionalProperties": false
+      },
+      "mutable": false
+    },
+    {
+      "name": "get_database_and_infra_observability_metrics",
+      "description": "Get exact Database and Infrastructure Observability metric definitions by namespace and name.",
+      "kind": "metadata",
+      "handler": "metric_catalog.get",
+      "skills": ["database-and-infra-observability-metric-catalog"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "namespace": {"type": "string"},
+                "name": {"type": "string"}
+              },
+              "required": ["namespace", "name"],
+              "additionalProperties": false
+            },
+            "description": "One or more exact namespace/name metric identities."
+          }
+        },
+        "required": ["keys"],
+        "additionalProperties": false
+      },
+      "mutable": false
+    },
+    {
+      "name": "list_database_and_infra_observability_metrics",
+      "description": "List Database and Infrastructure Observability metric definitions, filtered only by namespace or exact name.",
+      "kind": "metadata",
+      "handler": "metric_catalog.list",
+      "skills": ["database-and-infra-observability-metric-catalog"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "namespace": {"type": "string", "description": "Optional exact OCI Monitoring namespace filter."},
+          "name": {"type": "string", "description": "Optional exact metric-name filter."},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum definitions to return."},
+          "cursor": {"type": "string", "description": "Offset cursor returned by a previous list call."}
+        },
+        "additionalProperties": false
+      },
+      "mutable": false
+    },
+    {
+      "name": "read_database_and_infra_observability_metrics",
+      "description": "Read live OCI Monitoring data for a catalog-validated Database and Infrastructure Observability metric.",
+      "kind": "oci_sdk",
+      "service": "monitoring",
+      "client": "MonitoringClient",
+      "operation": "summarize_metrics_data",
+      "adapter": "monitoring.metric_read",
+      "skills": ["database-and-infra-observability-metric-catalog"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "compartment_id": {"type": "string", "description": "OCI compartment OCID containing monitored resources."},
+          "namespace": {"type": "string", "description": "Exact catalog namespace."},
+          "metric_name": {"type": "string", "description": "Exact catalog metric name."},
+          "dimension_filters": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Exact dimension filters validated against the catalog."},
+          "group_by": {"type": "string", "description": "Optional catalog-supported dimension used to group metric streams."},
+          "aggregation": {"type": "string", "enum": ["mean", "sum", "min", "max", "count", "first", "last", "rate", "increment"], "description": "Aggregation statistic for each interval."},
+          "interval": {"type": "string", "pattern": "^(?:[1-9]|[1-5][0-9])m$|^(?:[1-9]|1[0-9]|2[0-4])h$|^[1-9]d$", "description": "MQL interval such as 1m, 5m, 1h, or 1d."},
+          "resolution": {"type": "string", "pattern": "^(?:[1-9]|[1-5][0-9])m$|^(?:[1-9]|1[0-9]|2[0-4])h$|^[1-9]d$", "description": "Monitoring resolution such as 1m, 5m, 1h, or 1d."},
+          "start_time": {"type": "string", "format": "date-time", "description": "Inclusive RFC3339 start time."},
+          "end_time": {"type": "string", "format": "date-time", "description": "Exclusive RFC3339 end time."},
+          "resource_group": {"type": "string", "description": "Optional OCI Monitoring resource group."},
+          "compartment_id_in_subtree": {"type": "boolean", "description": "Include subcompartments only when compartment_id is the tenancy OCID."},
+          "max_results": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Maximum metric streams or data points represented in the response."}
+        },
+        "required": ["compartment_id", "namespace", "metric_name", "aggregation", "interval", "resolution", "start_time", "end_time"],
+        "additionalProperties": false
+      },
+      "mutable": false
+    },
+    {
+      "name": "list_database_and_infra_observability_alarms",
+      "description": "List read-only OCI Monitoring alarm definitions in a compartment, optionally narrowed by display name.",
+      "kind": "oci_sdk",
+      "service": "monitoring",
+      "client": "MonitoringClient",
+      "operation": "list_alarms",
+      "skills": ["database-and-infra-observability-metric-catalog"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "compartment_id": {"type": "string"},
+          "compartment_id_in_subtree": {"type": "boolean"},
+          "display_name": {"type": "string"},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+          "page": {"type": "string"}
+        },
+        "required": ["compartment_id"],
+        "additionalProperties": false
+      },
+      "mutable": false
+    },
+    {
+      "name": "get_database_and_infra_observability_alarm",
+      "description": "Get one read-only OCI Monitoring alarm definition by OCID.",
+      "kind": "oci_sdk",
+      "service": "monitoring",
+      "client": "MonitoringClient",
+      "operation": "get_alarm",
+      "skills": ["database-and-infra-observability-metric-catalog"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {"alarm_id": {"type": "string", "description": "OCI Monitoring alarm OCID."}},
+        "required": ["alarm_id"],
+        "additionalProperties": false
+      },
+      "mutable": false
+    },
+    {
+      "name": "list_database_and_infra_observability_alarm_states",
+      "description": "List current OCI Monitoring alarm states, optionally narrowed by resource, service, entity, or FIRING/OK state.",
+      "kind": "oci_sdk",
+      "service": "monitoring",
+      "client": "MonitoringClient",
+      "operation": "list_alarms_status",
+      "skills": ["database-and-infra-observability-metric-catalog"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "compartment_id": {"type": "string"},
+          "compartment_id_in_subtree": {"type": "boolean"},
+          "display_name": {"type": "string"},
+          "resource_id": {"type": "string"},
+          "service_name": {"type": "string"},
+          "entity_id": {"type": "string"},
+          "status": {"type": "string", "enum": ["FIRING", "OK"]},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+          "page": {"type": "string"}
+        },
+        "required": ["compartment_id"],
+        "additionalProperties": false
+      },
+      "mutable": false
     }
   ]
 }

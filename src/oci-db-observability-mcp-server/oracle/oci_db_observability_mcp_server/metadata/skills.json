@@ -173,6 +173,19 @@
       ]
     },
     {
+      "name": "database-and-infra-observability-metric-catalog",
+      "description": "Custom OCI Monitoring metric discovery, live metric retrieval, and read-only alarm investigation for matching OCI resources.",
+      "tools": [
+        "search_database_and_infra_observability_metrics",
+        "get_database_and_infra_observability_metrics",
+        "list_database_and_infra_observability_metrics",
+        "read_database_and_infra_observability_metrics",
+        "list_database_and_infra_observability_alarms",
+        "get_database_and_infra_observability_alarm",
+        "list_database_and_infra_observability_alarm_states"
+      ]
+    },
+    {
       "name": "database-performance-analysis",
       "description": "Use this skill for workload regression and bottleneck diagnosis using AWR evidence, wait analysis, CPU profiles, metric trends, and SQL/plan context. When starting from a managed database OCID, prefer the DB Management AWR route: list_managed_databases, list_awr_dbs, then the matching summarize_awr_db_* tool. Use Operations Insights AWR tools only when an Operations Insights AWR Hub OCID is independently known; its source identifier must come from list_awr_databases for that same hub.",
       "tools": [
