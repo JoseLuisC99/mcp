@@ -68,6 +68,15 @@ class _GroupModel(_PolymorphicModel):
     attribute_map = {"target": "target", "identifiers": "identifiers"}
 
 
+def _schema_operation(self, account_id, **kwargs):
+    """
+    :param str account_id: (required) The account identifier.
+    :param list[_SimpleModel] details: Optional model details.
+    """
+    expected_kwargs = ["details", "retry_strategy"]
+    return account_id, kwargs, expected_kwargs
+
+
 def test_packaged_registry_has_expected_shape() -> None:
     registry = load_registry()
 
@@ -268,4 +277,53 @@ def test_sdk_schema_helpers_build_strict_model_and_polymorphic_contracts() -> No
                 "required": ["target"],
             },
         ]
+    }
+
+
+def test_sdk_schema_operation_preserves_nested_constraints() -> None:
+    models = SimpleNamespace(_SimpleModel=_SimpleModel)
+
+    schema = schema_for_operation(
+        _schema_operation,
+        models,
+        {
+            "properties": {
+                "account_id": {"description": "Customer-facing account identifier", "minLength": 1},
+                "details": {
+                    "items": {
+                        "properties": {
+                            "name": {"pattern": "^[a-z]+$"},
+                            "counts": {"items": {"minimum": 0}},
+                        }
+                    }
+                },
+            },
+            "required": ["account_id"],
+        },
+    )
+
+    assert schema == {
+        "type": "object",
+        "properties": {
+            "account_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Customer-facing account identifier",
+            },
+            "details": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "pattern": "^[a-z]+$"},
+                        "counts": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                        "labels": {"type": "object", "additionalProperties": {"type": "boolean"}},
+                    },
+                    "additionalProperties": False,
+                    "required": ["name"],
+                },
+            },
+        },
+        "additionalProperties": False,
+        "required": ["account_id"],
     }
