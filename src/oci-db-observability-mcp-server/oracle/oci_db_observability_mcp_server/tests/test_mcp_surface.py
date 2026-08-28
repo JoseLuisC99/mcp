@@ -195,7 +195,7 @@ def test_resolve_compartment_searches_configured_roots_and_reports_ambiguity(mon
 
 def test_resolve_compartment_requires_a_configured_or_explicit_root(monkeypatch) -> None:
     monkeypatch.delenv("DBO_MCP_TENANCY_IDS", raising=False)
-    with pytest.raises(ValueError, match="No compartment discovery root"):
+    with pytest.raises(ValueError, match="No compartment search scope is configured"):
         mcp_module.resolve_oci_compartment("dbanalytics")
 
 
