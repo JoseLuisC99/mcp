@@ -146,7 +146,7 @@ def _require_compartment_scope(tool: Mapping[str, Any], arguments: Mapping[str, 
         if requirement["required"] and not arguments.get(argument):
             raise ValueError(
                 f"{tool['name']} requires {argument}. Ask the user for a compartment OCID, or for a "
-                "root_compartment_id to resolve a supplied compartment name. Do not invent an OCID."
+                "configured compartment discovery root to resolve a supplied compartment name. Do not invent an OCID."
             )
 
 
@@ -164,8 +164,8 @@ def _validate_compartment_scope(tool: Mapping[str, Any], arguments: Mapping[str,
             if exc.code == "NotAuthorizedOrNotFound" or exc.status in {403, 404}:
                 raise ValueError(
                     f"The supplied compartment OCID {compartment_id} is invalid or inaccessible to the configured "
-                    "OCI identity. Ask the user for a valid compartment OCID, or for a root_compartment_id to "
-                    "resolve a compartment name."
+                    "OCI identity. Ask the user for a valid compartment OCID, or use a configured compartment "
+                    "discovery root to resolve a compartment name."
                 ) from exc
             raise RuntimeError(f"Unable to validate compartment OCID {compartment_id}: {exc}") from exc
 

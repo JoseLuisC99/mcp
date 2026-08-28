@@ -25,6 +25,7 @@ async def test_unified_mcp_exposes_only_discovery_dispatch_and_compartment_tools
         "list_oci_compartments",
         "list_dbo_skills",
         "list_dbo_tools",
+        "resolve_oci_compartment",
     }
 
 
@@ -89,7 +90,8 @@ def test_get_compartment_requires_an_ocid() -> None:
         mcp_module.get_oci_compartment("")
 
 
-def test_list_compartments_requires_a_root_ocid() -> None:
+def test_list_compartments_requires_a_root_ocid_without_a_default(monkeypatch) -> None:
+    monkeypatch.delenv("DBO_MCP_TENANCY_IDS", raising=False)
     with pytest.raises(ValueError, match="root_compartment_id is required"):
         mcp_module.list_oci_compartments(
             root_compartment_id="",
@@ -100,6 +102,101 @@ def test_list_compartments_requires_a_root_ocid() -> None:
             limit=50,
             page=None,
         )
+
+
+def test_list_compartments_uses_a_single_configured_root(monkeypatch) -> None:
+    calls: dict[str, object] = {}
+
+    class Client:
+        def list_compartments(self, **kwargs):
+            calls["list"] = kwargs
+            return object()
+
+    monkeypatch.setenv("DBO_MCP_TENANCY_IDS", "configured-root")
+    monkeypatch.setattr(mcp_module, "identity_bootstrap_client", Client)
+    monkeypatch.setattr(mcp_module, "serialize_response", lambda _response: {"data": [], "nextPage": None})
+
+    assert mcp_module.list_oci_compartments(
+        include_subtree=True,
+        access_level="ACCESSIBLE",
+        name=None,
+        lifecycle_state=None,
+        limit=50,
+        page=None,
+    ) == {"items": [], "count": 0, "nextPage": None}
+    assert calls["list"] == {
+        "compartment_id": "configured-root",
+        "compartment_id_in_subtree": True,
+        "access_level": "ACCESSIBLE",
+        "name": None,
+        "lifecycle_state": None,
+        "limit": 50,
+        "page": None,
+    }
+
+
+def test_resolve_compartment_searches_configured_roots_and_reports_ambiguity(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class Response:
+        def __init__(self, data, next_page=None):
+            self.data = data
+            self.headers = {"opc-next-page": next_page} if next_page else {}
+
+    class Client:
+        def get_compartment(self, *, compartment_id):
+            return Response({"id": compartment_id, "name": f"root-{compartment_id}"})
+
+        def list_compartments(self, **kwargs):
+            calls.append(kwargs)
+            root = kwargs["compartment_id"]
+            if root not in {"root-a", "root-b"}:
+                return Response([])
+            return Response(
+                [
+                    {"id": f"{root}-dbanalytics", "name": "dbanalytics", "compartment_id": root},
+                ]
+            )
+
+    monkeypatch.setenv("DBO_MCP_TENANCY_IDS", "root-a, root-b, root-a")
+    monkeypatch.setattr(mcp_module, "identity_bootstrap_client", Client)
+    monkeypatch.setattr(
+        mcp_module,
+        "serialize_response",
+        lambda response: {"data": response.data, "nextPage": response.headers.get("opc-next-page")},
+    )
+
+    assert mcp_module.resolve_oci_compartment("DBANALYTICS") == {
+        "name": "DBANALYTICS",
+        "resolution": "ambiguous",
+        "matches": [
+            {
+                "id": "root-a-dbanalytics",
+                "name": "dbanalytics",
+                "path": "root-root-a/dbanalytics",
+                "rootCompartmentId": "root-a",
+            },
+            {
+                "id": "root-b-dbanalytics",
+                "name": "dbanalytics",
+                "path": "root-root-b/dbanalytics",
+                "rootCompartmentId": "root-b",
+            },
+        ],
+    }
+    assert [call["compartment_id"] for call in calls] == [
+        "root-a",
+        "root-a-dbanalytics",
+        "root-b",
+        "root-b-dbanalytics",
+    ]
+    assert all("name" not in call for call in calls)
+
+
+def test_resolve_compartment_requires_a_configured_or_explicit_root(monkeypatch) -> None:
+    monkeypatch.delenv("DBO_MCP_TENANCY_IDS", raising=False)
+    with pytest.raises(ValueError, match="No compartment discovery root"):
+        mcp_module.resolve_oci_compartment("dbanalytics")
 
 
 def test_discovery_and_invocation_tools_delegate_to_registry(monkeypatch) -> None:

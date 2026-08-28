@@ -2,7 +2,7 @@
 
 This package provides one MCP server for OCI Operations Insights (OPSI),
 Database Management (DBM), and OCI Monitoring observability workflows. It
-exposes two read-only compartment discovery tools plus four catalog discovery
+exposes three read-only compartment discovery tools plus four catalog discovery
 and invocation tools. The catalog contains read-only OCI SDK bindings and
 packaged metadata handlers.
 
@@ -42,11 +42,21 @@ The server uses `oracle-mcp-common` 0.1.2 or later for OCI authentication.
 ## Discovery workflow
 
 1. For a compartment-scoped operation, use a user-provided compartment OCID.
-   For a name lookup, request a user-provided `root_compartment_id`, then call
-   `list_oci_compartments` with that root and `name`. Use the returned item's
-   `id` as `compartment_id` in subsequent operations. Do not invent an OCID.
-   If the user provides an OCID, call `get_oci_compartment` to validate it when
-   needed.
+   For a name lookup, call `resolve_oci_compartment`; it searches the configured
+   discovery roots and returns matching OCIDs and paths. Configure one or more
+   comma-separated roots independently of OCI authentication:
+
+   ```sh
+   DBO_MCP_TENANCY_IDS=<tenancy_ocid>[,<another_tenancy_ocid>]
+   ```
+
+   Use the `id` from a unique match as `compartment_id` in subsequent operations.
+   If there are multiple matches, ask the user to select a returned path. If no
+   roots are configured, provide `root_compartment_ids` to the resolver or ask
+   the user for a root; do not invent an OCID. `list_oci_compartments` supports
+   direct browsing below an explicit root, or uses the configured root when
+   exactly one is configured. If the user provides an OCID, call
+   `get_oci_compartment` to validate it when needed.
 2. Call `list_dbo_skills` when the relevant capability is not already known.
 3. Call `list_dbo_tools` for selected skills when the required operation is not
    already known.
